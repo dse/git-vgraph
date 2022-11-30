@@ -66,7 +66,7 @@ git-log(1) options accepted:
     --parents, --graph (have no effect)
 END
 
-my $g = My::Git::Graph->new(%options);
+my $g = My::Git::Graph->new(options => \%options);
 
 # Let's pipe our own output through a pager.
 if (-t fileno(\*STDOUT)) {
@@ -140,6 +140,9 @@ package My::Git::Graph {
             my $remainder = $+{remainder};
             my @commitids = grep { m{\S} } split(qr{\s+}, $commitids);
             $self->startCommit(@commitids);
+            if (!$self->{options}->{parents}) {
+                $line = $esc1 . $commitids[0] . $esc2 . $remainder;
+            }
             $self->commitLogLine($line);
         } else {
             $self->commitLogLine($line);
