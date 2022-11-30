@@ -367,7 +367,86 @@ package My::Git::Graph {
 }
 ;                               # the semicolon keeps web-mode happy
 
+=head1 NAME
+
+git-vgraph - alternative to git-graph(1)
+
+=head1 SYNOPSIS
+
+    git vgraph
+        [--all]
+        [--decorate[=<short|full|auto|no>]], [--no-decorate]
+        [--date-order], [--author-date-order], [--topo-order]
+        [--pretty[=<format>]], [--format=<format>], [--oneline]
+        [--abbrev-commit], [--no-abbrev-commit]
+        [--date=<format>]
+        [--name-status]
+        [--no-color]
+        [--abbrev[=<n>]]
+        [--adog|--goad]
+
+    git log --parents ... | git vgraph [<option> ...] --stdin
+
+=head1 DESCRIPTION
+
+I've never liked C<git log --graph>'s output.  Mainly, in that the
+branches shift to the left and to the right all the time.  This makes
+it more difficult to follow along.
+
+C<git vgraph> provides an alternative that attempts to keep branches
+on the same column, making them easier to scan up and down.
+Sometimes, master/main or a branch has to shift to another column
+though, this cannot be avoided 100% of the time.
+
+This style of output does come at the expense of shifting the C<git
+log> text to the right quite some more.
+
+=head1 OPTIONS
+
+=over 4
+
+=item --adog, --goad
+
+Turns on the C<--all>, C<--decorate>, and C<--oneline> options.
+
+The "g" stands for C<--graph>, which is ignored by git-vgraph, which
+always displays a graph.
+
+=item --stdin
+
+Instructs git-vgraph to read C<git log --parents> output from stdin,
+instead of executing C<git log>.  Escape sequences are recognized and
+accounted for.
+
+To generate output compatible with git-vgraph, C<git log> must be
+executed with the C<--parents> option specified.
+
+=back
+
+=head1 GIT LOG OPTIONS ACCEPTED
+
+    --all
+    --decorate[=<short|full|auto|no>]
+    --no-decorate
+    --date-order
+    --author-date-order
+    --topo-order
+    --pretty[=<format>]
+    --format=<format>
+    --oneline
+    --abbrev-commit
+    --no-abbrev-commit
+    --date=<format>
+    --name-status
+    --no-color
+    --abbrev[=<n>]
+
+    --parents (has no effect)
+    --graph (has no effect)
+
 =head1 BUGS
+
+C<git-vgraph> does not accept all C<git log> options.
 
 C<git-vgraph> may fail to parse a line properly if it starts with a
 ticket number and all of the following conditions are true:
@@ -392,5 +471,16 @@ directly, or when running L<git-log> to generate the output fed to
 this program.
 
 =back
+
+=head1 AUTHOR
+
+Darren Embry C<dsembry@gmail.com>
+
+=head1 LICENSE
+
+C<git vgraph> is released under the GNU General Public License version
+2.0 --- the same terms as Git itself.
+
+https://opensource.org/licenses/GPL-2.0
 
 =cut
