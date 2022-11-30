@@ -5,6 +5,7 @@ use open qw(locale);
 our $PROGNAME = basename($0);
 
 use File::Basename qw(basename);
+use POSIX qw(dup2);
 # use Data::Dumper qw(Dumper);
 # sub dumper {
 #     local $Data::Dumper::Indent = 1;
@@ -66,6 +67,20 @@ git-log(1) options accepted:
 END
 
 my $g = My::Git::Graph->new(%options);
+
+# Let's pipe our own output through a pager.
+if (-t fileno(\*STDOUT)) {
+    my $pager = $ENV{GIT_VGRAPH_PAGER} // $ENV{GIT_PAGER} // $ENV{PAGER} // 'less';
+    my ($childIn, $parentOut);
+    pipe($childIn, $parentOut) or die("pipe: $!");
+    my $pid = fork();
+    die("fork: $!") if !defined $pid;
+    if ($pid) {
+        dup2(fileno($childIn), 0) or die("dup2: $!");
+        exec($pager) or die("exec: $!");
+    }
+    dup2(fileno($parentOut), 1) or die("dup2: $!");
+}
 
 if ($options{stdin}) {
     while (<>) {
@@ -420,6 +435,9 @@ accounted for.
 
 To generate output compatible with git-vgraph, C<git log> must be
 executed with the C<--parents> option specified.
+
+NOTE: In this mode, none of the C<git log> options this program
+accepts have any effect.
 
 =back
 
