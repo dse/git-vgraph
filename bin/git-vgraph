@@ -1,0 +1,396 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use open qw(locale);
+our $PROGNAME = basename($0);
+
+use File::Basename qw(basename);
+# use Data::Dumper qw(Dumper);
+# sub dumper {
+#     local $Data::Dumper::Indent = 1;
+#     local $Data::Dumper::Useqq = 1;
+#     local $Data::Dumper::Terse = 1;
+#     local $Data::Dumper::Sortkeys = 1;
+#     return Dumper(shift());
+# }
+
+STDOUT->autoflush(1);
+STDERR->autoflush(1);
+
+our %options;
+our @gitCmd = ('git', 'log', '--parents', '--color=always');
+
+use Getopt::Long;
+Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case');
+Getopt::Long::GetOptions(
+    'all'               => sub { push(@gitCmd, '--all'); },
+    'decorate:s'        => sub { if ($_[1] =~ m{\S}) { push(@gitCmd, '--decorate=' . $_[1]); } else { push(@gitCmd, '--decorate'); } },
+    'no-decorate'       => sub { push(@gitCmd, '--no-decorate'); },
+    'date-order'        => sub { push(@gitCmd, '--date-order'); },
+    'author-date-order' => sub { push(@gitCmd, '--author-date-order'); },
+    'topo-order'        => sub { push(@gitCmd, '--topo-order'); },
+    'pretty:s'          => sub { if ($_[1] =~ m{\S}) { push(@gitCmd, '--pretty=' . $_[1]); } else { push(@gitCmd, '--pretty'); } },
+    'format=s'          => sub { push(@gitCmd, '--format=' . $_[1]); },
+    'abbrev-commit'     => sub { push(@gitCmd, '--abbrev-commit'); },
+    'no-abbrev-commit'  => sub { push(@gitCmd, '--no-abbrev-commit'); },
+    'oneline'           => sub { push(@gitCmd, '--oneline'); },
+    'date=s'            => sub { push(@gitCmd, '--date=' . $_[1]); },
+    'parents'           => sub { $options{parents} = 1; },
+    'name-status'       => sub { push(@gitCmd, '--name-status'); },
+    'no-color'          => sub { push(@gitCmd, '--no-color'); },
+    'abbrev:s'          => sub { if ($_[1] =~ m{\S}) { push(@gitCmd, '--abbrev=' . $_[1]); } else { push(@gitCmd, '--abbrev'); } },
+    'graph'             => sub { }, # no effect
+    'adog|goad'         => sub { push(@gitCmd, '--oneline', '--all', '--decorate'); },
+
+    # our options
+    'stdin'             => sub { $options{stdin} = 1; },
+    'help'              => sub { usage(); exit(0); },
+) or die("Type '$PROGNAME --help' for help.\n");
+
+sub usage { print(<<"END"); }
+usage: ${PROGNAME} [<option> ...]
+    --adog, --goad   sets --oneline, --all, --decorate
+    --stdin          read git log --parents output from stdin
+    --help           print this message
+git-log(1) options accepted:
+    --all
+    --decorate[=<short|full|auto|no>], --no-decorate
+    --date-order, --author-date-order, --topo-order
+    --pretty[=<format>], --format=<format>, --oneline
+    --abbrev-commit, --no-abbrev-commit
+    --date=<format>
+    --name-status
+    --no-color
+    --abbrev[=<n>]
+    --parents, --graph (have no effect)
+END
+
+my $g = My::Git::Graph->new(%options);
+
+if ($options{stdin}) {
+    while (<>) {
+        $g->parseLine($_);
+    }
+    $g->eof();
+} else {
+    my $ph;
+    open($ph, '-|', @gitCmd) or die("unable to execute git log: $!\n");
+    while (<$ph>) {
+        $g->parseLine($_);
+    }
+    $g->eof();
+}
+
+package My::Git::Graph {
+    use Text::Tabs qw(expand);
+    use List::Util qw(min max uniq);
+    # use Data::Dumper qw(Dumper);
+    # sub dumper {
+    #     local $Data::Dumper::Indent = 0;
+    #     local $Data::Dumper::Useqq = 1;
+    #     local $Data::Dumper::Terse = 1;
+    #     local $Data::Dumper::Sortkeys = 1;
+    #     return Dumper(shift());
+    # }
+    our $RX_ESCAPE;
+    BEGIN {
+        $RX_ESCAPE = qr{\e\[[0-9;]*m};
+    }
+    sub new {
+        my ($class, %args) = @_;
+        my $self = bless(\%args, $class);
+        $self->{minCol} //= 24;
+        $self->{minSpace} //= 6;
+        $self->{graphLines} = [];
+        $self->{textLines} = [];
+        $self->{fillLine} = '';
+        $self->{colSep} //= 3;
+        $self->{abbrev} //= 8;
+        return $self;
+    }
+    sub parseLine {
+        my ($self, $line) = @_;
+        $line =~ s{\R\z}{};    # safer than chomp regarding \r\n vs \n
+        local $_ = $line;
+        $_ = expand($_);
+        my $RX_COMMIT_ID = qr{[[:xdigit:]]{$self->{abbrev},}}x;
+        if (m{^(?<esc1>${RX_ESCAPE})?
+              (commit[ ])?
+              (?<commitids>(?:${RX_COMMIT_ID})(?:[ ](?:${RX_COMMIT_ID}))*\b)
+              (?<esc2>\s*${RX_ESCAPE})?
+              (?<remainder>.*)$}x) {
+            my $esc1      = $+{esc1};
+            my $commitids = $+{commitids};
+            my $esc2      = $+{esc2};
+            my $remainder = $+{remainder};
+            my @commitids = grep { m{\S} } split(qr{\s+}, $commitids);
+            $self->startCommit(@commitids);
+            $self->commitLogLine($line);
+        } else {
+            $self->commitLogLine($line);
+        }
+    }
+    sub startCommit {
+        my ($self, $commit, $firstParent, @otherParents) = @_;
+        $self->printerFlush();
+        my $reserved = $self->{RC} //= {};
+        my $columns  = $self->{C} //= {};
+        my $state1   = { %$columns };
+        if (!defined $columns->{$commit}) {
+            $columns->{$commit} = $self->newColumn($columns);
+            $state1->{$commit} = $columns->{$commit};
+        }
+        if (!defined $firstParent) {
+            delete $state1->{$commit};
+            my $maxCol = max grep { defined $_ } values %$columns;
+            my $line1 = $self->verticalGraphLine($maxCol, $columns, $columns->{$commit});
+            my $line2 = $self->verticalGraphLine($maxCol, $state1);
+            $self->printerFill($line2);
+            $self->printerGraph($line1);
+            $self->printerGraph($line2);
+            %$columns = %$state1;
+            return;
+        }
+        if (!defined $state1->{$firstParent}) {
+            $state1->{$firstParent} = $columns->{$commit};
+        }
+        foreach my $otherParent (@otherParents) {
+            if (!defined $state1->{$otherParent}) {
+                $state1->{$otherParent} = $self->newColumn($state1);
+            }
+        }
+        my $maxCol = max grep { defined $_ } (values(%$columns), values(%$state1));
+        delete $state1->{$commit};
+        my $fillLine = $self->verticalGraphLine($maxCol, $state1);
+        my $line0 = $self->verticalGraphLine($maxCol, $columns, $columns->{$commit});
+        $self->printerFill($fillLine);
+        $self->printerGraph($line0);
+        my @diagLines = $self->diagonalGraphLines($maxCol, $columns, $state1, $commit, $firstParent, @otherParents);
+        foreach my $diagLine (@diagLines) {
+            $self->printerGraph($diagLine);
+        }
+        %$columns = %$state1;
+    }
+    sub commitLogLine {
+        my ($self, $line) = @_;
+        $self->printerText($line);
+    }
+    sub newColumn {
+        my ($self, @states) = @_;
+        my @columns = grep { defined $_ } map { (values(%$_)) } @states;
+        my %columns = map { ($_ => 1) } @columns;
+        for (my $i = 0; ; $i += 1) {
+            if (!$columns{$i}) {
+                return $i;
+            }
+        }
+    }
+    sub priorityWinner {
+        my ($self, $a, $b) = @_;
+        my $pri = $self->{priority} //= {};
+        return $a if $pri->{$a}->{$b};
+        return $b if $pri->{$b}->{$a};
+        return;
+    }
+    sub priorityAdd {
+        # add A-over-B rules
+        my ($self, $a, @b) = @_;
+        my $pri = $self->{priority} //= {};
+        foreach my $b (@b) {
+            return if $pri->{$a}->{$b}; # skip if there's already an A-over-B rule
+            return if $pri->{$b}->{$a}; # skip if there's a B-over-A rule
+            $pri->{$a}->{$b} = 1 if $a ne $b;
+        }
+    }
+    sub priorityReplace {
+        my ($self, $a, $b) = @_;
+        my $pri = $self->{priority} //= {};
+
+        # replace A-over-X rules with B-over-X rules.
+        foreach my $x (keys %{$pri->{$a}}) { # iterate A-over-X rules
+            return if $pri->{$b}->{$x}; # skip if there's a B-over-X rule.
+            return if $pri->{$x}->{$b}; # skip if there's an X-over-B rule.
+            $pri->{$b}->{$x} = 1 if $b ne $x;
+        }
+        delete $pri->{$a};
+
+        # replace X-over-A rules with X-over-B rules.
+        foreach my $x (keys %$pri) {
+            if ($pri->{$x}->{$a}) { # IFF there's an X-over-A rule ...
+                return if $pri->{$b}->{$x}; # skip if there's a B-over-X rule.
+                return if $pri->{$x}->{$b}; # skip if there's a X-over-B rule.
+                $pri->{$x}->{$b} = 1 if $x ne $b;
+            }
+        }
+    }
+    sub printerFill {
+        my ($self, $text) = @_;
+        $self->{fillLine} = $text // '';
+    }
+    sub printerText {
+        my ($self, $text) = @_;
+        push(@{$self->{textLines}}, $text);
+        $self->printerOut();
+    }
+    sub printerGraph {
+        my ($self, $text) = @_;
+        push(@{$self->{graphLines}}, $text);
+        $self->printerOut();
+    }
+    sub printerOut {
+        my ($self) = @_;
+        my $g = $self->{graphLines};
+        my $t = $self->{textLines};
+        while (scalar @$g && scalar @$t) {
+            my $graphLine = shift(@$g);
+            my $textLine = shift(@$t);
+            $self->printerPrintLine($graphLine, $textLine);
+        }
+    }
+    sub printerFlush {
+        my ($self) = @_;
+        my $g = $self->{graphLines};
+        my $t = $self->{textLines};
+        $self->printerOut();
+        while (scalar @$g || scalar @$t) {
+            my $graphLine = shift(@$g);
+            my $textLine = shift(@$t);
+            if (defined $graphLine && defined $textLine) {
+                $self->printerPrintLine($graphLine, $textLine);
+            } elsif (defined $graphLine) {
+                $self->printerPrintLine($graphLine, undef);
+            } elsif (defined $textLine) {
+                $self->printerPrintLine($self->{fillLine}, $textLine);
+            }
+        }
+    }
+    sub printerPrintLine {
+        my ($self, $graphLine, $textLine) = @_;
+        return if !defined $graphLine && !defined $textLine;
+        $graphLine //= '';
+        $textLine //= '';
+        $graphLine .= ' ' x $self->{minSpace};
+        my $len = $self->printedLength($graphLine);
+        if ($len < $self->{minCol}) {
+            $graphLine .= ' ' x ($self->{minCol} - $len);
+        }
+        print($graphLine, $textLine, "\n");
+    }
+    sub printedLength {
+        my ($self, $string) = @_;
+        $string =~ s{${RX_ESCAPE}}{}g;
+        return length $string;
+    }
+    sub verticalGraphLine {
+        my ($self, $maxCol, $A, $mark) = @_;
+        my $colSep = $self->{colSep};
+        my @col = grep { defined $_ } values(%$A);
+        return if !scalar @col;
+        my $line = ' ' x ($maxCol * $colSep + 1);
+        foreach my $col (@col) {
+            substr($line, $col * $colSep, 1) = '|';
+        }
+        if (defined $mark) {
+            substr($line, $mark * $colSep, 1) = '*';
+        }
+        return $line;
+    }
+    sub diagonalGraphLines {
+        my ($self, $maxCol, $columns, $state1, $commit, @parents) = @_;
+        if (!defined $commit && !scalar @parents) {
+            return ();
+        }
+        my $colSep = $self->{colSep};
+        my $useLine1;     # true if there's any diagonal lines at all
+        my $useLine2;     # true if line2 is needed to render properly
+        my $line1 = ' ' x ($maxCol * $colSep + 1);
+        my $line2 = ' ' x ($maxCol * $colSep + 1);
+        my @parentColumns = map { $state1->{$_} } @parents;
+        my $thisColumn = $columns->{$commit};
+        my @leftColumns  = grep { $_ < $thisColumn } @parentColumns;
+        my @rightColumns = grep { $_ > $thisColumn } @parentColumns;
+
+        # draw leftward downward diagonals
+        if (scalar @leftColumns) {
+            $useLine1 = 1;
+            substr($line1, $thisColumn * $colSep - 1, 1) = '/';
+            my $leftmostColumn = min @leftColumns;
+            foreach my $column (@leftColumns) {
+                next if $column == $thisColumn - 1 && $colSep < 3;
+                $useLine2 = 1;
+                substr($line2, $column * $colSep + 1, 1) = '/';
+            }
+            my $pos1 = $leftmostColumn * $colSep + 2;
+            my $pos2 = $thisColumn * $colSep - 2;
+            if ($pos1 <= $pos2) {
+                substr($line1, $pos1, $pos2 - $pos1 + 1) = '_' x ($pos2 - $pos1 + 1);
+            }
+        }
+
+        # draw rightward downward diagonals
+        if (scalar @rightColumns) {
+            $useLine1 = 1;
+            substr($line1, $thisColumn * $colSep + 1, 1) = '\\';
+            my $rightmostColumn = max @rightColumns;
+            foreach my $column (@rightColumns) {
+                next if $column == $thisColumn + 1 && $colSep < 3;
+                $useLine2 = 1;
+                substr($line2, $column * $colSep - 1, 1) = '\\';
+            }
+            my $pos1 = $thisColumn * $colSep + 2;
+            my $pos2 = $rightmostColumn * $colSep - 2;
+            if ($pos1 <= $pos2) {
+                substr($line1, $pos1, $pos2 - $pos1 + 1) = '_' x ($pos2 - $pos1 + 1);
+            }
+        }
+
+        # is one of the parents this column?
+        if (grep { $thisColumn == $_ } @parentColumns) {
+            substr($line1, $thisColumn * $colSep, 1) = '|';
+            substr($line2, $thisColumn * $colSep, 1) = '|';
+        }
+
+        my @verticalCommits = grep { defined $columns->{$_} } keys %$state1;
+        my @verticalColumns = map { $columns->{$_} } @verticalCommits;
+        foreach my $column (@verticalColumns) {
+            substr($line1, $column * $colSep, 1) = '|';
+            substr($line2, $column * $colSep, 1) = '|';
+        }
+        return ($line1, $line2) if $useLine2;
+        return ($line1) if $useLine1;
+        return ();
+    }
+    sub eof {
+        my ($self) = @_;
+        $self->printerFlush();
+    }
+}
+;                               # the semicolon keeps web-mode happy
+
+=head1 BUGS
+
+C<git-vgraph> may fail to parse a line properly if it starts with a
+ticket number and all of the following conditions are true:
+
+=over 4
+
+=item *
+
+C<--no-color> or an equivalent is specified, either to this program
+directly, or when running L<git-log> to generate the output fed to
+this program.
+
+=item *
+
+The ticket number starts with at least as many hex digits as
+abbreviated commit ids do.
+
+=item *
+
+C<--oneline> or an equivalent is specified, either to this program
+directly, or when running L<git-log> to generate the output fed to
+this program.
+
+=back
+
+=cut
