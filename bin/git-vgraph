@@ -113,9 +113,11 @@ package My::Git::Graph {
         $self->{abbrev} //= ($self->{options}->{abbrev} // 8);
         $self->{bullet} = "\N{BLACK CIRCLE}";
         $self->{abbrev} //= 1 if $self->{test};
+        $self->{pri} = {};
         $self->{why} = {};
         $self->{json} = JSON->new()->ascii(1)->pretty(0)->canonical(1);
         $self->{commitCount} = 0;
+        $self->{ruleCount} = 0;
 
         # Some other characters we might wish to try...
         #----------------------------------------------------------------------
@@ -189,6 +191,7 @@ package My::Git::Graph {
             }
         }
         if (!defined $firstParent) {
+            $self->priorityUnmention($commit);
             $self->{orphaned} = $state1->{$commit};
             delete $state1->{$commit};
             my $maxCol = max grep { defined $_ } values %$columns;
@@ -228,8 +231,13 @@ package My::Git::Graph {
                 }
                 if ($self->{options}->{test}) {
                     if (defined $winner) {
-                        print("$winner WINS OVER $loser\n");
+                        $self->{winnerCount} = ($self->{winnerCount} // 0) + 1;
+                        $self->printerTextPrintf("%d.  %s WINS OVER %s\n",
+                               $self->{winnerCount},
+                               $winner,
+                               $loser);
                         $self->tellMeWhy($winner, $loser);
+                        $self->priorityPrintRules();
                     }
                 }
             }
@@ -285,7 +293,7 @@ package My::Git::Graph {
     }
     sub priorityWinner {
         my ($self, $a, $b) = @_;
-        my $pri = $self->{priority} //= {};
+        my $pri = $self->{pri};
         if ($pri->{$a}->{$b}) {
             return ($a, $b) if wantarray;
             return  $a;
@@ -304,74 +312,140 @@ package My::Git::Graph {
             my ($A, $B, @C) = @$reason;
             if (!defined $A && !defined $B) {
                 if ($self->isTesting) {
-                    print("@C\n");
-                    print("$a $origA\n") if $a ne $origA;
-                    print("$b $origB\n") if $b ne $origB;
+                    $self->printerTextPrintf("#why# @C\n");
+                    $self->printerTextPrintf("#why# $a $origA\n") if $a ne $origA;
+                    $self->printerTextPrintf("#why# $b $origB\n") if $b ne $origB;
                 }
                 return;
             }
             ($a, $b) = ($A, $B);
         }
     }
+    sub priorityPrintRules {
+        my ($self) = @_;
+        return unless $self->isTesting;
+        my $pri = $self->{pri};
+        my @rules;
+        foreach my $a (keys %$pri) {
+            foreach my $b (keys %{$pri->{$a}}) {
+                push(@rules, sprintf("%s > %s [%d]", $a, $b, $pri->{$a}->{$b}));
+            }
+        }
+        $self->printerTextPrintf("#pri# %s", join(' ', @rules));
+    }
     sub priorityAdd {
         # add A-over-B rules
         my ($self, $commit, $a, @b) = @_;
-        my $pri = $self->{priority} //= {};
+        my $pri = $self->{pri};
         foreach my $b (@b) {
-            return if $pri->{$a}->{$b}; # skip if there's already an A-over-B rule
-            return if $pri->{$b}->{$a}; # skip if there's a B-over-A rule
-            $pri->{$a}->{$b} = 1 if $a ne $b;
-            $self->{why}->{$a}->{$b} = [undef, undef, $commit, $a, @b] if $self->{options}->{test};
+            if ($pri->{$a}->{$b}) {
+                next;
+            }
+            if ($pri->{$b}->{$a}) {
+                next;
+            }
+            if ($a eq $b) {
+                next;
+            }
+
+            my $ruleNumber = ++$self->{ruleCount};
+            $pri->{$a}->{$b} = $ruleNumber;
+            $self->printerTextPrintf("#pri#   adding    %s > %s [%4d]\n", $a, $b, $ruleNumber) if $self->isTesting;
+
+            if ($self->isTesting) {
+                my $why = $self->{why};
+                $why->{$a}->{$b} = [undef, undef, $commit, $a, @b];
+            }
         }
     }
     sub priorityReplace {
         my ($self, $a, $b, @p) = @_;
-        my $pri = $self->{priority} //= {};
+        my $pri = $self->{pri};
 
         if (!defined $b) {
-            delete $pri->{$a};  # remove A-over-X rules
-            delete $self->{why}->{$a} if $self->{options}->{test};
-            foreach my $x (keys %$pri) { # remove X-over-A rules
-                delete $pri->{$x}->{$a};
-                delete $self->{why}->{$x}->{$a} if $self->{options}->{test};
-                if (!scalar keys %{$pri->{$x}}) { # cleanup
-                    delete $pri->{$x};
-                }
-                if ($self->{options}->{test}) {
-                    if (!scalar keys %{$self->{why}->{$x}}) { # cleanup
-                        delete $self->{why}->{$x};
-                    }
-                }
-            }
-            return;
+            return $self->priorityUnmention($a);
         }
 
         # replace A-over-X rules with B-over-X rules.
         foreach my $x (keys %{$pri->{$a}}) { # iterate A-over-X rules
-            next if $pri->{$b}->{$x}; # skip if there's a B-over-X rule.
-            next if $pri->{$x}->{$b}; # skip if there's an X-over-B rule.
-            next if $b eq $x;
-            $pri->{$b}->{$x} = 1;
+            $self->printerTextPrintf("#pri#   removing  %s > %s [%4d] [replacing %s => %s]\n", $a, $x, $pri->{$a}->{$x}, $a, $b) if $self->isTesting;
             delete $pri->{$a}->{$x};
-            $self->{why}->{$b}->{$x} = [$a, $x, $a, $b, @p] if $self->{options}->{test};
+
+            if ($pri->{$b}->{$x}) {
+                next;
+            }
+            if ($pri->{$x}->{$b}) {
+                next;
+            }
+            if ($b eq $x) {
+                next;
+            }
+
+            my $ruleNumber = ++$self->{ruleCount};
+            $self->printerTextPrintf("#pri#   for       %s > %s [%4d] [replacing %s => %s]\n", $b, $x, $ruleNumber, $a, $b) if $self->isTesting;
+            $pri->{$b}->{$x} = $ruleNumber;
+
+            if ($self->isTesting) {
+                my $why = $self->{why};
+                $why->{$b}->{$x} = [$a, $x, $a, $b, @p];
+            }
         }
         delete $pri->{$a} if !scalar keys %{$pri->{$a}};
 
         # replace X-over-A rules with X-over-B rules.
         foreach my $x (keys %$pri) {
             if ($pri->{$x}->{$a}) { # IFF there's an X-over-A rule ...
-                next if $pri->{$b}->{$x}; # skip if there's a B-over-X rule.
-                next if $pri->{$x}->{$b}; # skip if there's a X-over-B rule.
-                next if $x eq $b;
-                $pri->{$x}->{$b} = 1;
+                $self->printerTextPrintf("#pri#   removing  %s > %s [%4d] [replacing %s => %s]\n", $x, $a, $pri->{$x}->{$a}, $a, $b) if $self->isTesting;
                 delete $pri->{$x}->{$a};
-                $self->{why}->{$x}->{$b} = [$x, $a, $a, $b, @p] if $self->{options}->{test};
+
+                if ($pri->{$b}->{$x}) {
+                    next;
+                }
+                if ($pri->{$x}->{$b}) {
+                    next;
+                }
+                if ($x eq $b) {
+                    next;
+                }
+
+                my $ruleNumber = ++$self->{ruleCount};
+                $self->printerTextPrintf("#pri#   with      %s > %s [%4d] [replacing %s => %s]\n", $x, $b, $ruleNumber, $a, $b) if $self->isTesting;
+                $pri->{$x}->{$b} = $ruleNumber;
+
+                if ($self->isTesting) {
+                    my $why = $self->{why};
+                    $why->{$x}->{$b} = [$x, $a, $a, $b, @p];
+                }
             }
         }
+    }
+    sub priorityUnmention {
+        my ($self, $a) = @_;
+        my $pri = $self->{pri};
+
+        if (defined $pri->{$a}) {
+            foreach my $b (keys %{$pri->{$a}}) {
+                $self->printerTextPrintf("#pri#   removing  %s > %s [%4d] [removing %s]\n", $a, $b, $pri->{$a}->{$b}, $a) if $self->isTesting;
+            }
+            delete $pri->{$a};
+        }
+        foreach my $b (keys %$pri) {
+            if (defined $pri->{$b}->{$a}) {
+                $self->printerTextPrintf("#pri#   deleting  %s > %s [%4d] [removing %s]\n", $b, $a, $pri->{$b}->{$a}, $a) if $self->isTesting;
+                delete $pri->{$b}->{$a};
+            }
+        }
+        delete $pri->{$b} if !scalar keys %{$pri->{$b}};
     }
     sub printerFill {
         my ($self, $text) = @_;
         $self->{fillLine} = $text // '';
+    }
+    sub printerTextPrintf {
+        my ($self, $format, @args) = @_;
+        my $string = sprintf($format, @args);
+        $string =~ s{\R\z}{};
+        push(@{$self->{textLines}}, $string);
     }
     sub printerText {
         my ($self, $text) = @_;
@@ -515,7 +589,7 @@ package My::Git::Graph {
     sub isTesting { return shift()->{options}->{test}; }
     sub DESTROY {
         my ($self) = @_;
-        if ($self->{options}->{test}) {
+        if ($self->isTesting) {
             my $why = $self->{why};
             printf("# chains of reasoning for %d commits consumed about %d bytes if JSON is what you go by\n",
                    $self->{commitCount},
