@@ -30,7 +30,7 @@ Getopt::Long::GetOptions(
     'date=s'            => sub { push(@gitCmd, '--date=' . $_[1]); },
     'parents'           => sub { $options{parents} = 1; },
     'name-status'       => sub { push(@gitCmd, '--name-status'); },
-    'no-color'          => sub { push(@gitCmd, '--no-color'); },
+    #'no-color'          => sub { push(@gitCmd, '--no-color'); },
     'abbrev:s'          => sub { $options{abbrev} = $_[1] if $_[1] =~ m{\S};
                                  if ($_[1] =~ m{\S}) { push(@gitCmd, '--abbrev=' . $_[1]); } else { push(@gitCmd, '--abbrev'); } },
     'graph'             => sub { }, # no effect
@@ -75,6 +75,7 @@ if (-t fileno(\*STDOUT)) {
         exec($pager) or die("exec: $!");
     }
     dup2(fileno($parentOut), 1) or die("dup2: $!");
+    $g->{options}->{isPaging} = 1;
 }
 
 if ($options{stdin}) {
@@ -493,6 +494,12 @@ package My::Git::Graph {
         my $len = $self->printedLength($graphLine);
         if ($len < $self->{minCol}) {
             $graphLine .= ' ' x ($self->{minCol} - $len);
+        }
+        if (!-t 1) {
+            if (!$self->{options}->{isPaging}) {
+                $graphLine =~ s{\e[[0-9;]*m}{}g if defined $graphLine;
+                $textLine =~ s{\e[[0-9;]*m}{}g if defined $textLine;
+            }
         }
         print($graphLine, $textLine, "\n");
     }
