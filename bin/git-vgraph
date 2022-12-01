@@ -104,7 +104,6 @@ package My::Git::Graph {
     sub new {
         my ($class, %args) = @_;
         my $self = bless(\%args, $class);
-
         $self->{minCol} //= 24;
         $self->{minSpace} //= 6;
         $self->{graphLines} = [];
@@ -119,24 +118,6 @@ package My::Git::Graph {
         $self->{json} = JSON->new()->ascii(1)->pretty(0)->canonical(1);
         $self->{commitCount} = 0;
         $self->{ruleCount} = 0;
-
-        # Some other characters we might wish to try...
-        #----------------------------------------------------------------------
-        # # NUMBER SIGN
-        # * ASTERISK
-        # • BULLET
-        # ∎ END OF PROOF
-        # █ FULL BLOCK
-        # ■ BLACK SQUARE
-        # ▮ BLACK VERTICAL RECTANGLE
-        # ◆ BLACK DIAMOND
-        # ● BLACK CIRCLE
-        # ⚫ MEDIUM BLACK CIRCLE
-        # ☻ BLACK SMILING FACE
-        # ⦿ CIRCLED BULLET
-        # ⬛ BLACK LARGE SQUARE
-        # ⬤ BLACK LARGE CIRCLE
-        # ⯀ BLACK SQUARE CENTRED [sic]
         return $self;
     }
     sub parseLine {
