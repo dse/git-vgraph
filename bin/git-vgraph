@@ -141,7 +141,7 @@ package My::Git::Graph {
             my @commitids = grep { m{\S} } split(qr{\s+}, $commitids);
             $self->startCommit(@commitids);
             if (!$self->{options}->{parents}) {
-                $line = $esc1 . $commitids[0] . $esc2 . $remainder;
+                $line = ($esc1 // '') . $commitids[0] . ($esc2 // '') . $remainder;
             }
             $self->commitLogLine($line);
         } else {
@@ -154,22 +154,36 @@ package My::Git::Graph {
         my $reserved = $self->{RC} //= {};
         my $columns  = $self->{C} //= {};
         my $state1   = { %$columns };
+        my $state2;
         if (!defined $columns->{$commit}) {
             $columns->{$commit} = $self->newColumn($columns);
             $state1->{$commit} = $columns->{$commit};
+            if (defined $self->{orphaned}) {
+                # if previous commit A had no parents and this commit B is
+                # assigned same column, insert a "blank" line to render
+                # properly, and not mislead people that A's parent is B.
+                if ($columns->{$commit} == $self->{orphaned}) {
+                    $self->printerGraph($self->{orphanLine});
+                    $self->printerText('');
+                }
+                delete $self->{orphanLine};
+                delete $self->{orphaned};
+            }
         }
         if (!defined $firstParent) {
+            $self->{orphaned} = $state1->{$commit};
             delete $state1->{$commit};
             my $maxCol = max grep { defined $_ } values %$columns;
             my $line1 = $self->verticalGraphLine($maxCol, $columns, $columns->{$commit});
             my $line2 = $self->verticalGraphLine($maxCol, $state1);
+            $self->{orphanLine} = $line2; # may need later
             $self->printerFill($line2);
             $self->printerGraph($line1);
-            $self->printerGraph($line2);
             %$columns = %$state1;
             return;
         }
-        if (!defined $state1->{$firstParent}) {
+        my $firstParentWasAllocated = defined $state1->{$firstParent};
+        if (!$firstParentWasAllocated) {
             $state1->{$firstParent} = $columns->{$commit};
         }
         foreach my $otherParent (@otherParents) {
@@ -177,17 +191,59 @@ package My::Git::Graph {
                 $state1->{$otherParent} = $self->newColumn($state1);
             }
         }
+        if ($firstParentWasAllocated) {
+            my $col1 = $state1->{$commit};
+            my $col2 = $state1->{$firstParent};
+            # given commit C and first parent P, which scenario
+            # do we draw?
+            #   col1 col2   col1 col2
+            #     C  (P)      C  (P)
+            #      \ |        | /
+            #       \|        |/
+            #        |        |
+            # The first scenario is simpler for our routines, as they
+            # are, to render.
+            if ($col1 ne $col2) {
+                my $winner = $self->priorityWinner($commit, $firstParent);
+                if ($winner == $col1) {
+                    $state2 = { %$state1 };
+                }
+            }
+        }
         my $maxCol = max grep { defined $_ } (values(%$columns), values(%$state1));
-        delete $state1->{$commit};
-        my $fillLine = $self->verticalGraphLine($maxCol, $state1);
+        my @diagLines1;
+        my @diagLines2;
+        if (defined $state2) {
+            my $col1 = $state1->{$commit};
+            my $col2 = $state1->{$firstParent};
+            @diagLines1 = $self->diagonalGraphLines($maxCol, $columns, $state1, $commit, @otherParents);
+
+            # You are not expected to understand this.
+            # BEGIN HACK
+            delete $state2->{$firstParent};
+            @diagLines2 = $self->diagonalGraphLines($maxCol, $state1, $state2, $firstParent, $commit);
+            $state2->{$firstParent} = $state2->{$commit};
+            delete $state2->{$commit};
+            # END HACK
+        } else {
+            delete $state1->{$commit};
+            @diagLines1 = $self->diagonalGraphLines($maxCol, $columns, $state1, $commit, $firstParent, @otherParents);
+        }
+        my $fillLine = $self->verticalGraphLine($maxCol, $state2 // $state1);
         my $line0 = $self->verticalGraphLine($maxCol, $columns, $columns->{$commit});
         $self->printerFill($fillLine);
         $self->printerGraph($line0);
-        my @diagLines = $self->diagonalGraphLines($maxCol, $columns, $state1, $commit, $firstParent, @otherParents);
-        foreach my $diagLine (@diagLines) {
+        # my @diagLines = $self->diagonalGraphLines($maxCol, $columns, $state1, $commit, $firstParent, @otherParents);
+        foreach my $diagLine (@diagLines1, @diagLines2) {
             $self->printerGraph($diagLine);
         }
-        %$columns = %$state1;
+        $self->priorityAdd($firstParent, @otherParents);
+        $self->priorityReplace($commit, $firstParent);
+        if (defined $state2) {
+            %$columns = %$state2;
+        } else {
+            %$columns = %$state1;
+        }
     }
     sub commitLogLine {
         my ($self, $line) = @_;
@@ -223,6 +279,17 @@ package My::Git::Graph {
     sub priorityReplace {
         my ($self, $a, $b) = @_;
         my $pri = $self->{priority} //= {};
+
+        if (!defined $b) {
+            delete $pri->{$a};  # remove A-over-X rules
+            foreach my $x (keys %$pri) { # remove X-over-A rules
+                delete $pri->{$x}->{$a};
+                if (!scalar keys %{$pri->{$x}}) { # cleanup
+                    delete $pri->{$x};
+                }
+            }
+            return;
+        }
 
         # replace A-over-X rules with B-over-X rules.
         foreach my $x (keys %{$pri->{$a}}) { # iterate A-over-X rules
