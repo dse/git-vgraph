@@ -46,6 +46,7 @@ Getopt::Long::GetOptions(
     'adog|goad'         => sub { push(@gitCmd, '--oneline', '--all', '--decorate'); },
 
     # our options
+    'test'              => sub { $options{test} = 1; },
     'stdin'             => sub { $options{stdin} = 1; },
     'help'              => sub { usage(); exit(0); },
 ) or die("Type '$PROGNAME --help' for help.\n");
@@ -125,6 +126,8 @@ package My::Git::Graph {
         $self->{abbrev} //= 8;
         $self->{bullet} = "\N{BLACK CIRCLE}";
 
+        $self->{abbrev} = 1 if $self->{test};
+
         # Some other characters we might wish to try...
         #----------------------------------------------------------------------
         # # NUMBER SIGN
@@ -146,6 +149,10 @@ package My::Git::Graph {
     }
     sub parseLine {
         my ($self, $line) = @_;
+        if ($self->{test}) {
+            return if $line !~ m{\S};
+            return if $line =~ m{^\s*#};
+        }
         $line =~ s{\R\z}{};    # safer than chomp regarding \r\n vs \n
         local $_ = $line;
         $_ = expand($_);
@@ -283,8 +290,14 @@ package My::Git::Graph {
     sub priorityWinner {
         my ($self, $a, $b) = @_;
         my $pri = $self->{priority} //= {};
-        return $a if $pri->{$a}->{$b};
-        return $b if $pri->{$b}->{$a};
+        if ($pri->{$a}->{$b}) {
+            return ($a, $b) if wantarray;
+            return  $a;
+        }
+        if ($pri->{$b}->{$a}) {
+            return ($b, $a) if wantarray;
+            return  $b;
+        }
         return;
     }
     sub priorityAdd {
@@ -314,18 +327,20 @@ package My::Git::Graph {
 
         # replace A-over-X rules with B-over-X rules.
         foreach my $x (keys %{$pri->{$a}}) { # iterate A-over-X rules
-            return if $pri->{$b}->{$x}; # skip if there's a B-over-X rule.
-            return if $pri->{$x}->{$b}; # skip if there's an X-over-B rule.
-            $pri->{$b}->{$x} = 1 if $b ne $x;
+            next if $pri->{$b}->{$x}; # skip if there's a B-over-X rule.
+            next if $pri->{$x}->{$b}; # skip if there's an X-over-B rule.
+            next if $b eq $x;
+            $pri->{$b}->{$x} = 1;
         }
         delete $pri->{$a};
 
         # replace X-over-A rules with X-over-B rules.
         foreach my $x (keys %$pri) {
             if ($pri->{$x}->{$a}) { # IFF there's an X-over-A rule ...
-                return if $pri->{$b}->{$x}; # skip if there's a B-over-X rule.
-                return if $pri->{$x}->{$b}; # skip if there's a X-over-B rule.
-                $pri->{$x}->{$b} = 1 if $x ne $b;
+                next if $pri->{$b}->{$x}; # skip if there's a B-over-X rule.
+                next if $pri->{$x}->{$b}; # skip if there's a X-over-B rule.
+                next if $x eq $b;
+                $pri->{$x}->{$b} = 1;
             }
         }
     }
