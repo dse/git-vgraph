@@ -125,8 +125,8 @@ package My::Git::Graph {
         $self->{colSep} //= 3;
         $self->{abbrev} //= 8;
         $self->{bullet} = "\N{BLACK CIRCLE}";
-
         $self->{abbrev} = 1 if $self->{test};
+        $self->{why} = {};
 
         # Some other characters we might wish to try...
         #----------------------------------------------------------------------
@@ -300,26 +300,49 @@ package My::Git::Graph {
         }
         return;
     }
+    sub tellMeWhy {
+        my ($self, $a, $b) = @_;
+        my $reason;
+        while (defined ($reason = $self->{why}->{$a}->{$b})) {
+            if (ref $reason eq '') {
+                print("#WHY# $reason\n");
+                return;
+            }
+            if (ref $reason eq 'ARRAY') {
+                ($a, $b) = @$reason;
+                next;
+            }
+            return;
+        }
+    }
     sub priorityAdd {
         # add A-over-B rules
         my ($self, $a, @b) = @_;
         my $pri = $self->{priority} //= {};
+        my $why = $self->{why};
         foreach my $b (@b) {
             return if $pri->{$a}->{$b}; # skip if there's already an A-over-B rule
             return if $pri->{$b}->{$a}; # skip if there's a B-over-A rule
             $pri->{$a}->{$b} = 1 if $a ne $b;
+            $why->{$a}->{$b} = 'assigned';
         }
     }
     sub priorityReplace {
         my ($self, $a, $b) = @_;
         my $pri = $self->{priority} //= {};
+        my $why = $self->{why};
 
         if (!defined $b) {
             delete $pri->{$a};  # remove A-over-X rules
+            delete $why->{$a};
             foreach my $x (keys %$pri) { # remove X-over-A rules
                 delete $pri->{$x}->{$a};
+                delete $why->{$x}->{$a};
                 if (!scalar keys %{$pri->{$x}}) { # cleanup
                     delete $pri->{$x};
+                }
+                if (!scalar keys %{$why->{$x}}) { # cleanup
+                    delete $why->{$x};
                 }
             }
             return;
@@ -331,8 +354,10 @@ package My::Git::Graph {
             next if $pri->{$x}->{$b}; # skip if there's an X-over-B rule.
             next if $b eq $x;
             $pri->{$b}->{$x} = 1;
+            delete $pri->{$a}->{$x};
+            $why->{$b}->{$x} = [$a, $x];
         }
-        delete $pri->{$a};
+        delete $pri->{$a} if !scalar keys %{$pri->{$a}};
 
         # replace X-over-A rules with X-over-B rules.
         foreach my $x (keys %$pri) {
@@ -341,6 +366,8 @@ package My::Git::Graph {
                 next if $pri->{$x}->{$b}; # skip if there's a X-over-B rule.
                 next if $x eq $b;
                 $pri->{$x}->{$b} = 1;
+                delete $pri->{$x}->{$a};
+                $why->{$x}->{$b} = [$x, $a];
             }
         }
     }
