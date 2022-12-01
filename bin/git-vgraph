@@ -37,6 +37,7 @@ Getopt::Long::GetOptions(
     'adog|goad'         => sub { push(@gitCmd, '--oneline', '--all', '--decorate'); },
 
     # our options
+    'narrow'            => sub { $options{colSep} = 2; },
     'test'              => sub { $options{test} = 1; },
     'stdin'             => sub { $options{stdin} = 1; },
     'help'              => sub { usage(); exit(0); },
@@ -82,6 +83,7 @@ if ($options{stdin}) {
     }
     $g->eof();
 } else {
+    push(@gitCmd, @ARGV);
     my $ph;
     open($ph, '-|', @gitCmd) or die("unable to execute git log: $!\n");
     while (<$ph>) {
@@ -107,7 +109,7 @@ package My::Git::Graph {
         $self->{graphLines} = [];
         $self->{textLines} = [];
         $self->{fillLine} = '';
-        $self->{colSep} //= 3;
+        $self->{colSep} //= ($self->{options}->{colSep} // 3);
         $self->{abbrev} //= ($self->{options}->{abbrev} // 8);
         $self->{bullet} = "\N{BLACK CIRCLE}";
         $self->{abbrev} //= 1 if $self->{test};
@@ -296,14 +298,18 @@ package My::Git::Graph {
     }
     sub tellMeWhy {
         my ($self, $a, $b) = @_;
+        my ($origA, $origB) = ($a, $b);
         my $reason;
         while (defined ($reason = $self->{why}->{$a}->{$b})) {
             my ($A, $B, @C) = @$reason;
             if (!defined $A && !defined $B) {
-                print("#WHY# $a > $b #BECAUSE# --- @C\n");
+                if ($self->isTesting) {
+                    print("@C\n");
+                    print("$a $origA\n") if $a ne $origA;
+                    print("$b $origB\n") if $b ne $origB;
+                }
                 return;
             }
-            print("#WHY# $a > $b #BECAUSE# $A > $B --- @C\n");
             ($a, $b) = ($A, $B);
         }
     }
@@ -506,6 +512,7 @@ package My::Git::Graph {
         my ($self) = @_;
         $self->printerFlush();
     }
+    sub isTesting { return shift()->{options}->{test}; }
     sub DESTROY {
         my ($self) = @_;
         if ($self->{options}->{test}) {
