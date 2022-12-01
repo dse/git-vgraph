@@ -194,6 +194,9 @@ package My::Git::Graph {
                 $state1->{$otherParent} = $self->newColumn($state1);
             }
         }
+        if ($self->isTesting) {
+            $self->{appendToFirstLine} = $self->prioritiesString();
+        }
         if ($firstParentWasAllocated) {
             my $col1 = $state1->{$commit};
             my $col2 = $state1->{$firstParent};
@@ -210,17 +213,6 @@ package My::Git::Graph {
                 my ($winner, $loser) = $self->priorityWinner($commit, $firstParent);
                 if (defined $winner && $state1->{$winner} == $col1) {
                     $state2 = { %$state1 };
-                }
-                if ($self->{options}->{test}) {
-                    if (defined $winner) {
-                        $self->{winnerCount} = ($self->{winnerCount} // 0) + 1;
-                        $self->printerTextPrintf("%d.  %s WINS OVER %s\n",
-                               $self->{winnerCount},
-                               $winner,
-                               $loser);
-                        $self->tellMeWhy($winner, $loser);
-                        $self->priorityPrintRules();
-                    }
                 }
             }
         }
@@ -286,24 +278,7 @@ package My::Git::Graph {
         }
         return;
     }
-    sub tellMeWhy {
-        my ($self, $a, $b) = @_;
-        my ($origA, $origB) = ($a, $b);
-        my $reason;
-        while (defined ($reason = $self->{why}->{$a}->{$b})) {
-            my ($A, $B, @C) = @$reason;
-            if (!defined $A && !defined $B) {
-                if ($self->isTesting) {
-                    $self->printerTextPrintf("#why# @C\n");
-                    $self->printerTextPrintf("#why# $a $origA\n") if $a ne $origA;
-                    $self->printerTextPrintf("#why# $b $origB\n") if $b ne $origB;
-                }
-                return;
-            }
-            ($a, $b) = ($A, $B);
-        }
-    }
-    sub priorityPrintRules {
+    sub prioritiesString {
         my ($self) = @_;
         return unless $self->isTesting;
         my $pri = $self->{pri};
@@ -313,7 +288,7 @@ package My::Git::Graph {
                 push(@rules, sprintf("%s > %s [%d]", $a, $b, $pri->{$a}->{$b}));
             }
         }
-        $self->printerTextPrintf("#pri# %s", join(' ', @rules));
+        return join(' ', @rules);
     }
     sub priorityAdd {
         # add A-over-B rules
@@ -332,7 +307,6 @@ package My::Git::Graph {
 
             my $ruleNumber = ++$self->{ruleCount};
             $pri->{$a}->{$b} = $ruleNumber;
-            $self->printerTextPrintf("#pri#   adding    %s > %s [%4d]\n", $a, $b, $ruleNumber) if $self->isTesting;
 
             if ($self->isTesting) {
                 my $why = $self->{why};
@@ -350,7 +324,6 @@ package My::Git::Graph {
 
         # replace A-over-X rules with B-over-X rules.
         foreach my $x (keys %{$pri->{$a}}) { # iterate A-over-X rules
-            $self->printerTextPrintf("#pri#   removing  %s > %s [%4d] [replacing %s => %s]\n", $a, $x, $pri->{$a}->{$x}, $a, $b) if $self->isTesting;
             delete $pri->{$a}->{$x};
 
             if ($pri->{$b}->{$x}) {
@@ -364,7 +337,6 @@ package My::Git::Graph {
             }
 
             my $ruleNumber = ++$self->{ruleCount};
-            $self->printerTextPrintf("#pri#   for       %s > %s [%4d] [replacing %s => %s]\n", $b, $x, $ruleNumber, $a, $b) if $self->isTesting;
             $pri->{$b}->{$x} = $ruleNumber;
 
             if ($self->isTesting) {
@@ -377,7 +349,6 @@ package My::Git::Graph {
         # replace X-over-A rules with X-over-B rules.
         foreach my $x (keys %$pri) {
             if ($pri->{$x}->{$a}) { # IFF there's an X-over-A rule ...
-                $self->printerTextPrintf("#pri#   removing  %s > %s [%4d] [replacing %s => %s]\n", $x, $a, $pri->{$x}->{$a}, $a, $b) if $self->isTesting;
                 delete $pri->{$x}->{$a};
 
                 if ($pri->{$b}->{$x}) {
@@ -391,7 +362,6 @@ package My::Git::Graph {
                 }
 
                 my $ruleNumber = ++$self->{ruleCount};
-                $self->printerTextPrintf("#pri#   with      %s > %s [%4d] [replacing %s => %s]\n", $x, $b, $ruleNumber, $a, $b) if $self->isTesting;
                 $pri->{$x}->{$b} = $ruleNumber;
 
                 if ($self->isTesting) {
@@ -404,30 +374,15 @@ package My::Git::Graph {
     sub priorityUnmention {
         my ($self, $a) = @_;
         my $pri = $self->{pri};
-
-        if (defined $pri->{$a}) {
-            foreach my $b (keys %{$pri->{$a}}) {
-                $self->printerTextPrintf("#pri#   removing  %s > %s [%4d] [removing %s]\n", $a, $b, $pri->{$a}->{$b}, $a) if $self->isTesting;
-            }
-            delete $pri->{$a};
-        }
+        delete $pri->{$a};
         foreach my $b (keys %$pri) {
-            if (defined $pri->{$b}->{$a}) {
-                $self->printerTextPrintf("#pri#   deleting  %s > %s [%4d] [removing %s]\n", $b, $a, $pri->{$b}->{$a}, $a) if $self->isTesting;
-                delete $pri->{$b}->{$a};
-            }
+            delete $pri->{$b}->{$a};
         }
         delete $pri->{$b} if !scalar keys %{$pri->{$b}};
     }
     sub printerFill {
         my ($self, $text) = @_;
         $self->{fillLine} = $text // '';
-    }
-    sub printerTextPrintf {
-        my ($self, $format, @args) = @_;
-        my $string = sprintf($format, @args);
-        $string =~ s{\R\z}{};
-        push(@{$self->{textLines}}, $string);
     }
     sub printerText {
         my ($self, $text) = @_;
@@ -465,6 +420,7 @@ package My::Git::Graph {
                 $self->printerPrintLine($self->{fillLine}, $textLine);
             }
         }
+        delete $self->{appendToFirstLine};
     }
     sub printerPrintLine {
         my ($self, $graphLine, $textLine) = @_;
@@ -482,7 +438,12 @@ package My::Git::Graph {
                 $textLine =~ s{\e[[0-9;]*m}{}g if defined $textLine;
             }
         }
-        print($graphLine, $textLine, "\n");
+        my $outputLine = $graphLine . $textLine;
+        if (defined $self->{appendToFirstLine}) {
+            $outputLine .= ' ' . $self->{appendToFirstLine};
+            delete $self->{appendToFirstLine};
+        }
+        print($outputLine, "\n");
     }
     sub printedLength {
         my ($self, $string) = @_;
