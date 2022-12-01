@@ -4,18 +4,8 @@ use strict;
 use open qw(locale);
 our $PROGNAME = basename($0);
 
-# TODO: user-selectable column separation, now defaults to 2, allow 3 or more
-
 use File::Basename qw(basename);
 use POSIX qw(dup2);
-# use Data::Dumper qw(Dumper);
-# sub dumper {
-#     local $Data::Dumper::Indent = 1;
-#     local $Data::Dumper::Useqq = 1;
-#     local $Data::Dumper::Terse = 1;
-#     local $Data::Dumper::Sortkeys = 1;
-#     return Dumper(shift());
-# }
 
 STDOUT->autoflush(1);
 STDERR->autoflush(1);
@@ -103,14 +93,6 @@ package My::Git::Graph {
     use Text::Tabs qw(expand);
     use List::Util qw(min max uniq);
     use JSON;
-    # use Data::Dumper qw(Dumper);
-    # sub dumper {
-    #     local $Data::Dumper::Indent = 0;
-    #     local $Data::Dumper::Useqq = 1;
-    #     local $Data::Dumper::Terse = 1;
-    #     local $Data::Dumper::Sortkeys = 1;
-    #     return Dumper(shift());
-    # }
     our $RX_ESCAPE;
     BEGIN {
         $RX_ESCAPE = qr{\e\[[0-9;]*m};
