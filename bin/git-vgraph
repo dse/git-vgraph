@@ -102,6 +102,7 @@ if ($options{stdin}) {
 package My::Git::Graph {
     use Text::Tabs qw(expand);
     use List::Util qw(min max uniq);
+    use JSON;
     # use Data::Dumper qw(Dumper);
     # sub dumper {
     #     local $Data::Dumper::Indent = 0;
@@ -127,6 +128,8 @@ package My::Git::Graph {
         $self->{bullet} = "\N{BLACK CIRCLE}";
         $self->{abbrev} = 1 if $self->{test};
         $self->{why} = {};
+        $self->{json} = JSON->new()->ascii(1)->pretty(0)->canonical(1);
+        $self->{commitCount} = 0;
 
         # Some other characters we might wish to try...
         #----------------------------------------------------------------------
@@ -178,6 +181,7 @@ package My::Git::Graph {
     }
     sub startCommit {
         my ($self, $commit, $firstParent, @otherParents) = @_;
+        $self->{commitCount} += 1;
         $self->printerFlush();
         my $reserved = $self->{RC} //= {};
         my $columns  = $self->{C} //= {};
@@ -236,12 +240,12 @@ package My::Git::Graph {
                 if (defined $winner && $state1->{$winner} == $col1) {
                     $state2 = { %$state1 };
                 }
-                # if (defined $winner) {
-                #     print("$winner WINS OVER $loser\n");
-                #     $self->tellMeWhy($winner, $loser);
-                # } else {
-                #     print("NO WINNER $commit $firstParent\n");
-                # }
+                if ($self->{options}->{test}) {
+                    if (defined $winner) {
+                        print("$winner WINS OVER $loser\n");
+                        $self->tellMeWhy($winner, $loser);
+                    }
+                }
             }
         }
         my $maxCol = max grep { defined $_ } (values(%$columns), values(%$state1));
@@ -272,7 +276,7 @@ package My::Git::Graph {
             $self->printerGraph($diagLine);
         }
         $self->priorityAdd($commit, $firstParent, @otherParents);
-        $self->priorityReplace($commit, $firstParent);
+        $self->priorityReplace($commit, $firstParent, @otherParents);
         if (defined $state2) {
             %$columns = %$state2;
         } else {
@@ -310,47 +314,43 @@ package My::Git::Graph {
         my ($self, $a, $b) = @_;
         my $reason;
         while (defined ($reason = $self->{why}->{$a}->{$b})) {
-            if (ref $reason eq '') {
-                print("#WHY# $reason\n");
+            my ($A, $B, @C) = @$reason;
+            if (!defined $A && !defined $B) {
+                print("#WHY# $a > $b #BECAUSE# --- @C\n");
                 return;
             }
-            if (ref $reason eq 'ARRAY') {
-                my ($reasonA, $reasonB) = @$reason;
-                # print("#WHY# $reasonB $b # $a > $b because $reasonA > $reasonB\n");
-                ($a, $b) = @$reason;
-                next;
-            }
-            return;
+            print("#WHY# $a > $b #BECAUSE# $A > $B --- @C\n");
+            ($a, $b) = ($A, $B);
         }
     }
     sub priorityAdd {
         # add A-over-B rules
         my ($self, $commit, $a, @b) = @_;
         my $pri = $self->{priority} //= {};
-        my $why = $self->{why};
         foreach my $b (@b) {
             return if $pri->{$a}->{$b}; # skip if there's already an A-over-B rule
             return if $pri->{$b}->{$a}; # skip if there's a B-over-A rule
             $pri->{$a}->{$b} = 1 if $a ne $b;
-            $why->{$a}->{$b} = "$commit $a $b # $a > $b because $a is a first parent of $commit and $b is an other parent of $commit";
+            $self->{why}->{$a}->{$b} = [undef, undef, $commit, $a, @b] if $self->{options}->{test};
         }
     }
     sub priorityReplace {
-        my ($self, $a, $b) = @_;
+        my ($self, $a, $b, @p) = @_;
         my $pri = $self->{priority} //= {};
-        my $why = $self->{why};
 
         if (!defined $b) {
             delete $pri->{$a};  # remove A-over-X rules
-            delete $why->{$a};
+            delete $self->{why}->{$a} if $self->{options}->{test};
             foreach my $x (keys %$pri) { # remove X-over-A rules
                 delete $pri->{$x}->{$a};
-                delete $why->{$x}->{$a};
+                delete $self->{why}->{$x}->{$a} if $self->{options}->{test};
                 if (!scalar keys %{$pri->{$x}}) { # cleanup
                     delete $pri->{$x};
                 }
-                if (!scalar keys %{$why->{$x}}) { # cleanup
-                    delete $why->{$x};
+                if ($self->{options}->{test}) {
+                    if (!scalar keys %{$self->{why}->{$x}}) { # cleanup
+                        delete $self->{why}->{$x};
+                    }
                 }
             }
             return;
@@ -363,7 +363,7 @@ package My::Git::Graph {
             next if $b eq $x;
             $pri->{$b}->{$x} = 1;
             delete $pri->{$a}->{$x};
-            $why->{$b}->{$x} = [$a, $x];
+            $self->{why}->{$b}->{$x} = [$a, $x, $a, $b, @p] if $self->{options}->{test};
         }
         delete $pri->{$a} if !scalar keys %{$pri->{$a}};
 
@@ -375,7 +375,7 @@ package My::Git::Graph {
                 next if $x eq $b;
                 $pri->{$x}->{$b} = 1;
                 delete $pri->{$x}->{$a};
-                $why->{$x}->{$b} = [$x, $a];
+                $self->{why}->{$x}->{$b} = [$x, $a, $a, $b, @p] if $self->{options}->{test};
             }
         }
     }
@@ -521,6 +521,15 @@ package My::Git::Graph {
     sub eof {
         my ($self) = @_;
         $self->printerFlush();
+    }
+    sub DESTROY {
+        my ($self) = @_;
+        if ($self->{options}->{test}) {
+            my $why = $self->{why};
+            printf("# chains of reasoning for %d commits consumed about %d bytes if JSON is what you go by\n",
+                   $self->{commitCount},
+                   length($self->{json}->encode($self->{why})));
+        }
     }
 }
 ;                               # the semicolon keeps web-mode happy
