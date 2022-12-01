@@ -31,7 +31,8 @@ Getopt::Long::GetOptions(
     'parents'           => sub { $options{parents} = 1; },
     'name-status'       => sub { push(@gitCmd, '--name-status'); },
     'no-color'          => sub { push(@gitCmd, '--no-color'); },
-    'abbrev:s'          => sub { if ($_[1] =~ m{\S}) { push(@gitCmd, '--abbrev=' . $_[1]); } else { push(@gitCmd, '--abbrev'); } },
+    'abbrev:s'          => sub { $options{abbrev} = $_[1] if $_[1] =~ m{\S};
+                                 if ($_[1] =~ m{\S}) { push(@gitCmd, '--abbrev=' . $_[1]); } else { push(@gitCmd, '--abbrev'); } },
     'graph'             => sub { }, # no effect
     'adog|goad'         => sub { push(@gitCmd, '--oneline', '--all', '--decorate'); },
 
@@ -100,15 +101,16 @@ package My::Git::Graph {
     sub new {
         my ($class, %args) = @_;
         my $self = bless(\%args, $class);
+
         $self->{minCol} //= 24;
         $self->{minSpace} //= 6;
         $self->{graphLines} = [];
         $self->{textLines} = [];
         $self->{fillLine} = '';
         $self->{colSep} //= 3;
-        $self->{abbrev} //= 8;
+        $self->{abbrev} //= ($self->{options}->{abbrev} // 8);
         $self->{bullet} = "\N{BLACK CIRCLE}";
-        $self->{abbrev} = 1 if $self->{test};
+        $self->{abbrev} //= 1 if $self->{test};
         $self->{why} = {};
         $self->{json} = JSON->new()->ascii(1)->pretty(0)->canonical(1);
         $self->{commitCount} = 0;
