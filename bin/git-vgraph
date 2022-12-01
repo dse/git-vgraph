@@ -295,15 +295,9 @@ package My::Git::Graph {
         my ($self, $commit, $a, @b) = @_;
         my $pri = $self->{pri};
         foreach my $b (@b) {
-            if ($pri->{$a}->{$b}) {
-                next;
-            }
-            if ($pri->{$b}->{$a}) {
-                next;
-            }
-            if ($a eq $b) {
-                next;
-            }
+            if ($pri->{$a}->{$b}) { next; }
+            if ($pri->{$b}->{$a}) { next; }
+            if ($a eq $b)         { next; }
 
             my $ruleNumber = ++$self->{ruleCount};
             $pri->{$a}->{$b} = $ruleNumber;
@@ -326,15 +320,9 @@ package My::Git::Graph {
         foreach my $x (keys %{$pri->{$a}}) { # iterate A-over-X rules
             delete $pri->{$a}->{$x};
 
-            if ($pri->{$b}->{$x}) {
-                next;
-            }
-            if ($pri->{$x}->{$b}) {
-                next;
-            }
-            if ($b eq $x) {
-                next;
-            }
+            if ($pri->{$b}->{$x}) { next; }
+            if ($pri->{$x}->{$b}) { next; }
+            if ($b eq $x)         { next; }
 
             my $ruleNumber = ++$self->{ruleCount};
             $pri->{$b}->{$x} = $ruleNumber;
@@ -351,15 +339,9 @@ package My::Git::Graph {
             if ($pri->{$x}->{$a}) { # IFF there's an X-over-A rule ...
                 delete $pri->{$x}->{$a};
 
-                if ($pri->{$b}->{$x}) {
-                    next;
-                }
-                if ($pri->{$x}->{$b}) {
-                    next;
-                }
-                if ($x eq $b) {
-                    next;
-                }
+                if ($pri->{$b}->{$x}) { next; }
+                if ($pri->{$x}->{$b}) { next; }
+                if ($x eq $b)         { next; }
 
                 my $ruleNumber = ++$self->{ruleCount};
                 $pri->{$x}->{$b} = $ruleNumber;
