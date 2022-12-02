@@ -182,7 +182,7 @@ package My::VGraph {
         $self->{strategy} //= $self->{options}->{strategy};
         $self->{colSep} //= ($self->{options}->{colSep} // 3);
         $self->{pri} = My::PriorityFight->new(%args) if $self->usingPriorityFight;
-        $self->{draw} = My::VGraph::Draw::BoxDrawing->new(%args);
+        $self->{draw} = My::VGraph::Draw::ASCII->new(%args);
         return $self;
     }
     sub commit {
