@@ -204,31 +204,30 @@ package My::Git::Graph {
                 $diagLinesDrawn = 1;
                 my $col1 = $state1->{$commit};
                 my $col2 = $state1->{$firstParent};
+
+                # leave first parent ($col2) where it is, we're moving that next
+                my @verticalColumns = ($col2, (map { $columns->{$_} }
+                                               grep { defined $state1->{$_} && $columns->{$_} == $state1->{$_} }
+                                               keys %$columns));
+                my @childColumns = map { $state1->{$_} } @otherParents;
                 @diagLines1 = $self->drawGraphLines(
                     mode => 'diagonals',
                     maxCol => $maxCol,
-                    verticalColumns => [
-                        $col2, (
-                            map { $columns->{$_} }
-                            grep { defined $state1->{$_} && $columns->{$_} == $state1->{$_} }
-                            keys %$columns
-                        )
-                    ],
+                    verticalColumns => [@verticalColumns],
                     parentColumn => $columns->{$commit},
-                    childColumns => [ map { $state1->{$_} } @otherParents ],
+                    childColumns => [@childColumns],
                 );
+
+                # now we move first parent $col2 to $col1
+                @verticalColumns = ($col1, (grep { $_ != $col2 } values %$state1));
                 @diagLines2 = $self->drawGraphLines(
                     mode => 'diagonals',
                     maxCol => $maxCol,
-                    verticalColumns => [
-                        $col1, (
-                            grep { $_ != $col2 }
-                            values %$state1
-                        )
-                    ],
+                    verticalColumns => [@verticalColumns],
                     parentColumn => $col2,
                     childColumns => [$col1],
                 );
+
                 $state2->{$firstParent} = $state2->{$commit};
                 delete $state2->{$commit};
             }
@@ -236,16 +235,16 @@ package My::Git::Graph {
         if (!$diagLinesDrawn) {
             $diagLinesDrawn = 1;
             delete $state1->{$commit};
+            my @verticalColumns = (map { $columns->{$_} }
+                                   grep { defined $state1->{$_} && $columns->{$_} == $state1->{$_} }
+                                   keys %$columns);
+            my @childColumns = map { $state1->{$_} } ($firstParent, @otherParents);
             @diagLines1 = $self->drawGraphLines(
                 mode => 'diagonals',
                 maxCol => $maxCol,
-                verticalColumns => [
-                    map { $columns->{$_} }
-                    grep { defined $state1->{$_} && $columns->{$_} == $state1->{$_} }
-                    keys %$columns
-                ],
+                verticalColumns => [@verticalColumns],
                 parentColumn => $columns->{$commit},
-                childColumns => [ map { $state1->{$_} } ($firstParent, @otherParents) ],
+                childColumns => [@childColumns],
             );
         }
         my $fillLine = $self->verticalGraphLine($maxCol, $state2 // $state1);
