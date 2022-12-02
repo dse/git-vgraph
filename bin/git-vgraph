@@ -183,6 +183,7 @@ package My::VGraph {
         $self->{colSep} //= ($self->{options}->{colSep} // 3);
         $self->{bullet} //= "\N{BLACK CIRCLE}";
         $self->{pri} = My::PriorityFight->new(%args) if $self->usingPriorityFight;
+        $self->{draw} = My::VGraph::Draw->new(%args);
         return $self;
     }
     sub commit {
@@ -220,8 +221,8 @@ package My::VGraph {
             $self->{orphaned} = $state1->{$commit};
             delete $state1->{$commit};
             my $maxCol = max grep { defined $_ } values %$columns;
-            my $line1 = $self->verticalGraphLine($maxCol, $columns, $columns->{$commit});
-            my $line2 = $self->verticalGraphLine($maxCol, $state1);
+            my $line1 = $self->{draw}->vertical($maxCol, $columns, $columns->{$commit});
+            my $line2 = $self->{draw}->vertical($maxCol, $state1);
             $self->{orphanLine} = $line2; # may need later
             $leftFill = $line2;
             push(@left, $line1);
@@ -278,7 +279,7 @@ package My::VGraph {
                                                        grep { defined $state1->{$_} && $columns->{$_} == $state1->{$_} }
                                                        keys %$columns));
             my @diagonalsToColumns = map { $state1->{$_} } @otherParents;
-            @diagLines1 = $self->drawGraphLines(
+            @diagLines1 = $self->{draw}->draw(
                 mode => 'diagonals',
                 maxCol => $maxCol,
                 verticalColumns => [@verticalColumns],
@@ -286,7 +287,7 @@ package My::VGraph {
                 diagonalsToColumns => [@diagonalsToColumns],
             );
             @verticalColumns = ($switchToColumn, (grep { $_ != $switchFromColumn } values %$state1));
-            @diagLines2 = $self->drawGraphLines(
+            @diagLines2 = $self->{draw}->draw(
                 mode => 'diagonals',
                 maxCol => $maxCol,
                 verticalColumns => [@verticalColumns],
@@ -301,7 +302,7 @@ package My::VGraph {
                                    grep { defined $state1->{$_} && $columns->{$_} == $state1->{$_} }
                                    keys %$columns);
             my @diagonalsToColumns = map { $state1->{$_} } ($firstParent, @otherParents);
-            @diagLines1 = $self->drawGraphLines(
+            @diagLines1 = $self->{draw}->draw(
                 mode => 'diagonals',
                 maxCol => $maxCol,
                 verticalColumns => [@verticalColumns],
@@ -309,8 +310,8 @@ package My::VGraph {
                 diagonalsToColumns => [@diagonalsToColumns],
             );
         }
-        $leftFill = $self->verticalGraphLine($maxCol, $state2 // $state1);
-        my $line0 = $self->verticalGraphLine($maxCol, $columns, $columns->{$commit});
+        $leftFill = $self->{draw}->vertical($maxCol, $state2 // $state1);
+        my $line0 = $self->{draw}->vertical($maxCol, $columns, $columns->{$commit});
         push(@left, $line0);
         foreach my $diagLine (@diagLines1, @diagLines2) {
             push(@left, $diagLine);
@@ -341,17 +342,35 @@ package My::VGraph {
             }
         }
     }
-    sub verticalGraphLine {
+    sub usingPriorityFight {
+        my ($self) = @_;
+        return defined $self->{strategy} && $self->{strategy} eq 'priority-fight';
+    }
+    sub usingLeftmostColumn {
+        my ($self) = @_;
+        return defined $self->{strategy} && $self->{strategy} eq 'leftmost-column';
+    }
+}
+;                               # keep web-mode happy
+
+package My::VGraph::Draw {
+    use List::Util qw(min max);
+    sub new {
+        my ($class, %args) = @_;
+        my $self = bless(\%args, $class);
+        return $self;
+    }
+    sub vertical {
         my ($self, $maxCol, $A, $mark) = @_;
         my @vcol = grep { defined $_ } values(%$A);
-        return $self->drawGraphLines(
+        return $self->draw(
             maxCol => $maxCol,
             mode => 'verticals',
             verticalColumns => \@vcol,
             markColumn => $mark,
         );
     }
-    sub drawGraphLines {
+    sub draw {
         my ($self, %args) = @_;
 
         # conceptually specifies what kind of drawing you're doing; in
@@ -437,16 +456,7 @@ package My::VGraph {
             return $line1;
         }
     }
-    sub usingPriorityFight {
-        my ($self) = @_;
-        return defined $self->{strategy} && $self->{strategy} eq 'priority-fight';
-    }
-    sub usingLeftmostColumn {
-        my ($self) = @_;
-        return defined $self->{strategy} && $self->{strategy} eq 'leftmost-column';
-    }
 }
-;                               # keep web-mode happy
 
 package My::PriorityFight {
     sub new {
