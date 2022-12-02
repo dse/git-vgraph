@@ -36,6 +36,7 @@ Getopt::Long::GetOptions(
     'adog|goad'         => sub { push(@gitCmd, '--oneline', '--all', '--decorate'); },
 
     # our options
+    'priority-fight'    => sub { $options{strategy} = 'priority-fight'; },
     'narrow'            => sub { $options{colSep} = 2; },
     'stdin'             => sub { $options{stdin} = 1; },
     'help'              => sub { usage(); exit(0); },
@@ -101,7 +102,7 @@ package My::Git::Graph {
     sub new {
         my ($class, %args) = @_;
         my $self = bless(\%args, $class);
-        $self->{strategy} = undef;
+        $self->{strategy} //= $self->{options}->{strategy};
         $self->{colSep} //= ($self->{options}->{colSep} // 3);
         $self->{abbrev} //= ($self->{options}->{abbrev} // 8);
         $self->{bullet} //= "\N{BLACK CIRCLE}";
