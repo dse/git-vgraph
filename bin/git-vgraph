@@ -180,11 +180,16 @@ package My::Git::Graph {
         }
 
         if ($self->usingPriorityFight) {
+            # normally if a commit and its first parent are assigned
+            # to different columns, we move from current commit's
+            # column $col1 to the first parent's column $col2.
             my $col1 = $state1->{$commit};
             my $col2 = $state1->{$firstParent};
             if ($col1 ne $col2) {
                 my ($winner, $loser) = $self->{pri}->winner($commit, $firstParent);
                 if (defined $winner && $state1->{$winner} == $col1) {
+                    # we move first parent to current commit's column
+                    # $col1; commit's column $col2 stays.
                     $state2 = { %$state1 };
                 }
             }
@@ -213,6 +218,13 @@ package My::Git::Graph {
         } else {
             delete $state1->{$commit};
             @diagLines1 = $self->diagonalGraphLines($maxCol, $columns, $state1, $commit, $firstParent, @otherParents);
+            # @diagLines1 = $self->drawGraphLines(
+            #     maxCol => $maxCol,
+            #     state0 => $columns,
+            #     state1 => $state1,
+            #     parentCommit => $commit,
+            #     childCommits => [$firstParent, @otherParents],
+            # );
         }
         my $fillLine = $self->verticalGraphLine($maxCol, $state2 // $state1);
         my $line0 = $self->verticalGraphLine($maxCol, $columns, $columns->{$commit});
