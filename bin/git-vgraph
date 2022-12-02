@@ -195,15 +195,6 @@ package My::Git::Graph {
             if ($firstParentWasAllocated) {
                 my $col1 = $state1->{$commit};
                 my $col2 = $state1->{$firstParent};
-                # given commit C and first parent P, which scenario
-                # do we draw?
-                #   col1 col2   col1 col2
-                #     C  (P)      C  (P)
-                #      \ |        | /
-                #       \|        |/
-                #        |        |
-                # The first scenario is simpler for our routines, as they
-                # are, to render.
                 if ($col1 ne $col2) {
                     my ($winner, $loser) = $self->{pri}->winner($commit, $firstParent);
                     if (defined $winner && $state1->{$winner} == $col1) {
