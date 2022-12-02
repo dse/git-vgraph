@@ -464,6 +464,7 @@ package My::VGraph::Draw::BoxDrawing {
         my ($class, %args) = @_;
         my $self = bless(\%args, $class);
         $self->{bullet} //= "\N{BLACK CIRCLE}";
+        $self->{arcs} = 1;
         return $self;
     }
     sub vertical {
@@ -493,7 +494,6 @@ package My::VGraph::Draw::BoxDrawing {
             return if !scalar @verticalColumns && !defined $markColumn;
         }
 
-        my $colSep = $self->{colSep};
         my $useLine1;
         my @line1;
         my @leftColumns  = grep { $_ < $diagonalsFromColumn } @diagonalsToColumns;
@@ -503,11 +503,12 @@ package My::VGraph::Draw::BoxDrawing {
                 $useLine1 = 1;
                 $line1[$diagonalsFromColumn]{t} = 1;
                 $line1[$diagonalsFromColumn]{l} = 1;
+                $line1[$diagonalsFromColumn]{tl} = 1;
                 my $leftmostColumn = min @leftColumns;
                 foreach my $column (@leftColumns) {
-                    next if $column == $diagonalsFromColumn - 1 && $colSep < 3;
                     $line1[$column]{r} = 1;
                     $line1[$column]{b} = 1;
+                    $line1[$column]{rb} = 1;
                 }
                 my $pos1 = $leftmostColumn + 1;
                 my $pos2 = $diagonalsFromColumn - 1;
@@ -520,17 +521,19 @@ package My::VGraph::Draw::BoxDrawing {
                 $useLine1 = 1;
                 $line1[$diagonalsFromColumn]{t} = 1;
                 $line1[$diagonalsFromColumn]{r} = 1;
+                $line1[$diagonalsFromColumn]{tr} = 1;
                 my $rightmostColumn = max @rightColumns;
                 foreach my $column (@rightColumns) {
-                    next if $column == $diagonalsFromColumn + 1 && $colSep < 3;
                     $line1[$column]{l} = 1;
                     $line1[$column]{b} = 1;
+                    $line1[$column]{bl} = 1;
                 }
                 my $pos1 = $diagonalsFromColumn + 1;
                 my $pos2 = $rightmostColumn - 1;
                 for (my $pos = $pos1; $pos <= $pos2; $pos += 1) {
                     $line1[$pos]{l} = 1;
                     $line1[$pos]{r} = 1;
+                    $line1[$pos]{rl} = 1;
                 }
             }
             if (grep { $diagonalsFromColumn == $_ } @diagonalsToColumns) {
@@ -544,9 +547,6 @@ package My::VGraph::Draw::BoxDrawing {
         }
         if (defined $markColumn) {
             $line1[$markColumn]{bullet} = 1;
-            # my $bullet = $self->{bullet};
-            # substr($line1, $markColumn * $colSep, 1) = $bullet;
-            # $line1 =~ s{\Q$bullet\E}{\e[1;33m$&\e[m}g;
         }
         if ($mode eq 'diagonals') {
             return $self->boxDrawing(@line1) if $useLine1;
@@ -557,6 +557,7 @@ package My::VGraph::Draw::BoxDrawing {
         }
     }
     our %boxDrawing;
+    our %boxDrawingArcs;
     INIT {
         %boxDrawing = (
             ''     => "\N{SPACE}",
@@ -576,13 +577,19 @@ package My::VGraph::Draw::BoxDrawing {
             'rbl'  => "\N{BOX DRAWINGS LIGHT DOWN AND HORIZONTAL}",
             'trbl' => "\N{BOX DRAWINGS LIGHT VERTICAL AND HORIZONTAL}",
         );
+        %boxDrawingArcs = (
+            'rb'   => "\N{BOX DRAWINGS LIGHT ARC DOWN AND RIGHT}",
+            'bl'   => "\N{BOX DRAWINGS LIGHT ARC DOWN AND LEFT}",
+            'tl'   => "\N{BOX DRAWINGS LIGHT ARC UP AND LEFT}",
+            'tr'   => "\N{BOX DRAWINGS LIGHT ARC UP AND RIGHT}",
+        );
     }
     sub boxDrawing {
         my ($self, @cells) = @_;
         my $line = '';
         for (my $i = 0; $i < scalar @cells; $i += 1) {
             if ($i) {
-                $line .= $self->boxDrawingBetweenCells($cells[$i - 1], $cells[$i]) x 2;
+                $line .= $self->boxDrawingBetweenCells($cells[$i - 1], $cells[$i]) x ($self->{colSep} - 1);
             }
             $line .= $self->boxDrawingCell($cells[$i]);
         }
@@ -593,11 +600,19 @@ package My::VGraph::Draw::BoxDrawing {
         if ($cell->{bullet}) {
             return "\e[1;33m" . $self->{bullet} . "\e[m";
         }
+
         my $type = '';
         $type .= 't' if $cell->{t};
         $type .= 'r' if $cell->{r};
         $type .= 'b' if $cell->{b};
         $type .= 'l' if $cell->{l};
+
+        if ($self->{arcs}) {
+            return $boxDrawingArcs{tr} if $cell->{tr} && !$cell->{l};
+            return $boxDrawingArcs{tl} if $cell->{tl} && !$cell->{r};
+            return $boxDrawingArcs{rb} if $cell->{rb} && !$cell->{l};
+            return $boxDrawingArcs{bl} if $cell->{bl} && !$cell->{r};
+        }
         return $boxDrawing{$type};
     }
     sub boxDrawingBetweenCells {
