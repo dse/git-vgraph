@@ -539,24 +539,35 @@ git-vgraph - alternative to git-graph(1)
 
 =head1 SYNOPSIS
 
-    git vgraph
-        [--all]
-        [--decorate[=<short|full|auto|no>]], [--no-decorate]
-        [--date-order], [--author-date-order], [--topo-order]
-        [--pretty[=<format>]], [--format=<format>], [--oneline]
-        [--abbrev-commit], [--no-abbrev-commit]
-        [--date=<format>]
-        [--name-status]
-        [--abbrev[=<n>]]
-        [--adog|--goad]
+B<git vgraph>
+S<[B<--all>]>
+S<[B<--decorate>[B<=short>|B<full>|B<auto>|B<no>]]>
+S<[B<--no-decorate>]>
+S<[B<--date-order>]>
+S<[B<--author-date-order>]>
+S<[B<--topo-order>]>
+S<[B<--pretty>[B<=>I<format>]]>
+S<[B<--format=>I<format>]>
+S<[B<--oneline>]>
+S<[B<--abbrev-commit>]>
+S<[B<--no-abbrev-commit>]>
+S<[B<--date=>I<format>]>
+S<[B<--name-status>]>
+S<[B<--abbrev>[B<=>I<n>]]>
+S<[B<--adog>|B<--goad>]>
+S<[B<-->]>
+S<[I<arguments> ...]>
 
-    git log --parents ... | git vgraph [<option> ...] --stdin
+B<git log --parents ... | git vgraph>
+S<[B<option> ...]>
+B<--stdin>
+S<[I<arguments> ...]>
 
 =head1 DESCRIPTION
 
 I've never liked C<git log --graph>'s output.  Mainly, in that the
 branches shift to the left and to the right all the time.  This makes
-it more difficult to follow along.
+it more difficult to follow along when scanning up and down.
 
 C<git vgraph> provides an alternative that attempts to keep branches
 on the same column, making them easier to scan up and down.
@@ -564,7 +575,7 @@ Sometimes, master/main or a branch has to shift to another column
 though, this cannot be avoided 100% of the time.
 
 This style of output does come at the expense of shifting the C<git
-log> text to the right quite some more.
+log> text to the right a bit more than C<git log --graph>.
 
 =head1 OPTIONS
 
@@ -574,8 +585,8 @@ log> text to the right quite some more.
 
 Turns on the C<--all>, C<--decorate>, and C<--oneline> options.
 
-The "g" stands for C<--graph>, which is ignored by git-vgraph, which
-always displays a graph.
+The "g" stands for C<--graph>, which is ignored by git-vgraph, on
+account of it always displays a graph.
 
 =item --stdin
 
@@ -583,8 +594,8 @@ Instructs git-vgraph to read C<git log --parents> output from stdin,
 instead of executing C<git log>.  Escape sequences are recognized and
 accounted for.
 
-To generate output compatible with git-vgraph, C<git log> must be
-executed with the C<--parents> option specified.
+For C<git vgraph> to render a graph, C<git log> must have be executed
+with the C<--parents> option specified.
 
 NOTE: In this mode, none of the C<git log> options this program
 accepts have any effect.
@@ -592,6 +603,10 @@ accepts have any effect.
 =back
 
 =head1 GIT LOG OPTIONS ACCEPTED
+
+C<git-vgraph> does not accept all C<git log> options.  Presently it
+processes the following, simply passing many of them along to C<git
+log>:
 
     --all
     --decorate[=<short|full|auto|no>]
@@ -611,19 +626,21 @@ accepts have any effect.
 
     --graph (has no effect)
 
+You may pass additional options to C<git log> by specifying the C<-->
+parameter which stops C<git vgraph> from processing options.  For
+example, C<git vgraph> does not itself process C<git log>'s
+C<--log-size> option, but you can pass it to C<git log> via the
+following:
+
+    git vgraph --all --oneline --decorate -- --log-size
+
 =head1 BUGS
 
-C<git-vgraph> does not accept all C<git log> options.
-
-C<git-vgraph> may fail to parse a line properly if it starts with a
-ticket number and all of the following conditions are true:
+C<git-vgraph> may fail to parse a line containing a commit id and its
+parent ids properly if the commit log message's first line starts with
+a ticket number B<and all> of the following conditions are true:
 
 =over 4
-
-=item *
-
-C<--no-color> or an equivalent is specified when running L<git-log> to
-generate the output fed to this program.
 
 =item *
 
@@ -633,8 +650,8 @@ abbreviated commit ids do.
 =item *
 
 C<--oneline> or an equivalent is specified, either to this program
-directly, or when running L<git-log> to generate the output fed to
-this program.
+directly (which passes it along), or when running L<git-log> to
+generate the output fed to this program.
 
 =back
 
