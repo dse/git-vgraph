@@ -352,7 +352,7 @@ package My::VGraph {
 }
 ;                               # keep web-mode happy
 
-package My::VGraph::Draw {
+package My::VGraph::Draw::ASCII {
     use List::Util qw(min max);
     sub new {
         my ($class, %args) = @_;
