@@ -213,39 +213,39 @@ package My::Git::Graph {
         my @diagLines1;
         my @diagLines2;
         my $diagLinesDrawn = 0;
-        if ($self->usingPriorityFight) {
-            if (defined $state2) {
-                $diagLinesDrawn = 1;
-                my $col1 = $state1->{$commit};
-                my $col2 = $state1->{$firstParent};
 
-                # leave first parent ($col2) where it is, we're moving that next
-                my @verticalColumns = ($col2, (map { $columns->{$_} }
-                                               grep { defined $state1->{$_} && $columns->{$_} == $state1->{$_} }
-                                               keys %$columns));
-                my @childColumns = map { $state1->{$_} } @otherParents;
-                @diagLines1 = $self->drawGraphLines(
-                    mode => 'diagonals',
-                    maxCol => $maxCol,
-                    verticalColumns => [@verticalColumns],
-                    parentColumn => $columns->{$commit},
-                    childColumns => [@childColumns],
-                );
+        if (defined $state2) {
+            $diagLinesDrawn = 1;
+            my $col1 = $state1->{$commit};
+            my $col2 = $state1->{$firstParent};
 
-                # now we move first parent $col2 to $col1
-                @verticalColumns = ($col1, (grep { $_ != $col2 } values %$state1));
-                @diagLines2 = $self->drawGraphLines(
-                    mode => 'diagonals',
-                    maxCol => $maxCol,
-                    verticalColumns => [@verticalColumns],
-                    parentColumn => $col2,
-                    childColumns => [$col1],
-                );
+            # leave first parent ($col2) where it is, we're moving that next
+            my @verticalColumns = ($col2, (map { $columns->{$_} }
+                                           grep { defined $state1->{$_} && $columns->{$_} == $state1->{$_} }
+                                           keys %$columns));
+            my @childColumns = map { $state1->{$_} } @otherParents;
+            @diagLines1 = $self->drawGraphLines(
+                mode => 'diagonals',
+                maxCol => $maxCol,
+                verticalColumns => [@verticalColumns],
+                parentColumn => $columns->{$commit},
+                childColumns => [@childColumns],
+            );
 
-                $state2->{$firstParent} = $state2->{$commit};
-                delete $state2->{$commit};
-            }
+            # now we move first parent $col2 to $col1
+            @verticalColumns = ($col1, (grep { $_ != $col2 } values %$state1));
+            @diagLines2 = $self->drawGraphLines(
+                mode => 'diagonals',
+                maxCol => $maxCol,
+                verticalColumns => [@verticalColumns],
+                parentColumn => $col2,
+                childColumns => [$col1],
+            );
+
+            $state2->{$firstParent} = $state2->{$commit};
+            delete $state2->{$commit};
         }
+
         if (!$diagLinesDrawn) {
             $diagLinesDrawn = 1;
             delete $state1->{$commit};
@@ -271,11 +271,9 @@ package My::Git::Graph {
         if ($self->usingPriorityFight) {
             $self->{pri}->add($commit, $firstParent, @otherParents);
             $self->{pri}->replace($commit, $firstParent, @otherParents);
-            if (defined $state2) {
-                %$columns = %$state2;
-            } else {
-                %$columns = %$state1;
-            }
+        }
+        if (defined $state2) {
+            %$columns = %$state2;
         } else {
             %$columns = %$state1;
         }
@@ -388,7 +386,8 @@ package My::Git::Graph {
         my ($self) = @_;
         $self->{printer}->flush();
     }
-};                              # the semicolon keeps web-mode happy
+}
+;                               # the semicolon keeps web-mode happy
 
 package My::PriorityFight {
     sub new {
@@ -425,9 +424,15 @@ package My::PriorityFight {
         my ($self, $commit, $a, @b) = @_;
         my $pri = $self->{pri};
         foreach my $b (@b) {
-            if ($pri->{$a}->{$b}) { next; }
-            if ($pri->{$b}->{$a}) { next; }
-            if ($a eq $b)         { next; }
+            if ($pri->{$a}->{$b}) {
+                next;
+            }
+            if ($pri->{$b}->{$a}) {
+                next;
+            }
+            if ($a eq $b) {
+                next;
+            }
             $pri->{$a}->{$b} = 1;
         }
     }
@@ -437,18 +442,30 @@ package My::PriorityFight {
         return $self->priorityUnmention($a) if !defined $b;
         foreach my $x (keys %{$pri->{$a}}) {
             delete $pri->{$a}->{$x};
-            if ($pri->{$b}->{$x}) { next; }
-            if ($pri->{$x}->{$b}) { next; }
-            if ($b eq $x)         { next; }
+            if ($pri->{$b}->{$x}) {
+                next;
+            }
+            if ($pri->{$x}->{$b}) {
+                next;
+            }
+            if ($b eq $x) {
+                next;
+            }
             $pri->{$b}->{$x} = 1;
         }
         delete $pri->{$a} if !scalar keys %{$pri->{$a}};
         foreach my $x (keys %$pri) {
             if ($pri->{$x}->{$a}) {
                 delete $pri->{$x}->{$a};
-                if ($pri->{$b}->{$x}) { next; }
-                if ($pri->{$x}->{$b}) { next; }
-                if ($x eq $b)         { next; }
+                if ($pri->{$b}->{$x}) {
+                    next;
+                }
+                if ($pri->{$x}->{$b}) {
+                    next;
+                }
+                if ($x eq $b) {
+                    next;
+                }
                 $pri->{$x}->{$b} = 1;
             }
         }
@@ -462,7 +479,8 @@ package My::PriorityFight {
             delete $pri->{$b} if !scalar keys %{$pri->{$b}};
         }
     }
-};
+}
+;
 
 package My::Printer {
     sub new {
@@ -531,7 +549,8 @@ package My::Printer {
         $string =~ s{\e\[[0-9;]*m}{}g;
         return length $string;
     }
-};
+}
+;
 
 =head1 NAME
 
