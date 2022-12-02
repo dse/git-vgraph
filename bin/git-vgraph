@@ -30,7 +30,6 @@ Getopt::Long::GetOptions(
     'date=s'            => sub { push(@gitCmd, '--date=' . $_[1]); },
     'parents'           => sub { $options{parents} = 1; },
     'name-status'       => sub { push(@gitCmd, '--name-status'); },
-    #'no-color'          => sub { push(@gitCmd, '--no-color'); },
     'abbrev:s'          => sub { $options{abbrev} = $_[1] if $_[1] =~ m{\S};
                                  if ($_[1] =~ m{\S}) { push(@gitCmd, '--abbrev=' . $_[1]); } else { push(@gitCmd, '--abbrev'); } },
     'graph'             => sub { }, # no effect
@@ -103,6 +102,7 @@ package My::Git::Graph {
     sub new {
         my ($class, %args) = @_;
         my $self = bless(\%args, $class);
+        $self->{strategy} = undef;
         $self->{minCol} //= 24;
         $self->{minSpace} //= 6;
         $self->{graphLines} = [];
@@ -112,7 +112,7 @@ package My::Git::Graph {
         $self->{abbrev} //= ($self->{options}->{abbrev} // 8);
         $self->{bullet} = "\N{BLACK CIRCLE}";
         $self->{abbrev} //= 8;
-        $self->{pri} = {};
+        $self->{pri} = My::PriorityFight->new() if $self->usingPriorityFight;
         $self->{json} = JSON->new()->ascii(1)->pretty(0)->canonical(1);
         $self->{commitCount} = 0;
         $self->{ruleCount} = 0;
@@ -167,7 +167,9 @@ package My::Git::Graph {
             }
         }
         if (!defined $firstParent) {
-            $self->priorityUnmention($commit);
+            if ($self->usingPriorityFight) {
+                $self->{pri}->remove($commit);
+            }
             $self->{orphaned} = $state1->{$commit};
             delete $state1->{$commit};
             my $maxCol = max grep { defined $_ } values %$columns;
@@ -179,49 +181,65 @@ package My::Git::Graph {
             %$columns = %$state1;
             return;
         }
-        my $firstParentWasAllocated = defined $state1->{$firstParent};
-        if (!$firstParentWasAllocated) {
-            $state1->{$firstParent} = $columns->{$commit};
-        }
-        foreach my $otherParent (@otherParents) {
-            if (!defined $state1->{$otherParent}) {
-                $state1->{$otherParent} = $self->newColumn($state1);
+
+        if ($self->usingPriorityFight) {
+            my $firstParentWasAllocated = defined $state1->{$firstParent};
+            if (!$firstParentWasAllocated) {
+                $state1->{$firstParent} = $columns->{$commit};
             }
-        }
-        if ($firstParentWasAllocated) {
-            my $col1 = $state1->{$commit};
-            my $col2 = $state1->{$firstParent};
-            # given commit C and first parent P, which scenario
-            # do we draw?
-            #   col1 col2   col1 col2
-            #     C  (P)      C  (P)
-            #      \ |        | /
-            #       \|        |/
-            #        |        |
-            # The first scenario is simpler for our routines, as they
-            # are, to render.
-            if ($col1 ne $col2) {
-                my ($winner, $loser) = $self->priorityWinner($commit, $firstParent);
-                if (defined $winner && $state1->{$winner} == $col1) {
-                    $state2 = { %$state1 };
+            foreach my $otherParent (@otherParents) {
+                if (!defined $state1->{$otherParent}) {
+                    $state1->{$otherParent} = $self->newColumn($state1);
+                }
+            }
+            if ($firstParentWasAllocated) {
+                my $col1 = $state1->{$commit};
+                my $col2 = $state1->{$firstParent};
+                # given commit C and first parent P, which scenario
+                # do we draw?
+                #   col1 col2   col1 col2
+                #     C  (P)      C  (P)
+                #      \ |        | /
+                #       \|        |/
+                #        |        |
+                # The first scenario is simpler for our routines, as they
+                # are, to render.
+                if ($col1 ne $col2) {
+                    my ($winner, $loser) = $self->{pri}->winner($commit, $firstParent);
+                    if (defined $winner && $state1->{$winner} == $col1) {
+                        $state2 = { %$state1 };
+                    }
+                }
+            }
+        } else {
+            $state1->{$firstParent} //= $columns->{$commit};
+            foreach my $otherParent (@otherParents) {
+                if (!defined $state1->{$otherParent}) {
+                    $state1->{$otherParent} = $self->newColumn($state1);
                 }
             }
         }
+
         my $maxCol = max grep { defined $_ } (values(%$columns), values(%$state1));
         my @diagLines1;
         my @diagLines2;
-        if (defined $state2) {
-            my $col1 = $state1->{$commit};
-            my $col2 = $state1->{$firstParent};
-            @diagLines1 = $self->diagonalGraphLines($maxCol, $columns, $state1, $commit, @otherParents);
+        if ($self->usingPriorityFight) {
+            if (defined $state2) {
+                my $col1 = $state1->{$commit};
+                my $col2 = $state1->{$firstParent};
+                @diagLines1 = $self->diagonalGraphLines($maxCol, $columns, $state1, $commit, @otherParents);
 
-            # You are not expected to understand this.
-            # BEGIN HACK
-            delete $state2->{$firstParent};
-            @diagLines2 = $self->diagonalGraphLines($maxCol, $state1, $state2, $firstParent, $commit);
-            $state2->{$firstParent} = $state2->{$commit};
-            delete $state2->{$commit};
-            # END HACK
+                # You are not expected to understand this.
+                # BEGIN HACK
+                delete $state2->{$firstParent};
+                @diagLines2 = $self->diagonalGraphLines($maxCol, $state1, $state2, $firstParent, $commit);
+                $state2->{$firstParent} = $state2->{$commit};
+                delete $state2->{$commit};
+                # END HACK
+            } else {
+                delete $state1->{$commit};
+                @diagLines1 = $self->diagonalGraphLines($maxCol, $columns, $state1, $commit, $firstParent, @otherParents);
+            }
         } else {
             delete $state1->{$commit};
             @diagLines1 = $self->diagonalGraphLines($maxCol, $columns, $state1, $commit, $firstParent, @otherParents);
@@ -233,10 +251,14 @@ package My::Git::Graph {
         foreach my $diagLine (@diagLines1, @diagLines2) {
             $self->printerGraph($diagLine);
         }
-        $self->priorityAdd($commit, $firstParent, @otherParents);
-        $self->priorityReplace($commit, $firstParent, @otherParents);
-        if (defined $state2) {
-            %$columns = %$state2;
+        if ($self->usingPriorityFight) {
+            $self->{pri}->add($commit, $firstParent, @otherParents);
+            $self->{pri}->replace($commit, $firstParent, @otherParents);
+            if (defined $state2) {
+                %$columns = %$state2;
+            } else {
+                %$columns = %$state1;
+            }
         } else {
             %$columns = %$state1;
         }
@@ -253,86 +275,6 @@ package My::Git::Graph {
             if (!$columns{$i}) {
                 return $i;
             }
-        }
-    }
-    sub priorityWinner {
-        my ($self, $a, $b) = @_;
-        my $pri = $self->{pri};
-        if ($pri->{$a}->{$b}) {
-            return ($a, $b) if wantarray;
-            return  $a;
-        }
-        if ($pri->{$b}->{$a}) {
-            return ($b, $a) if wantarray;
-            return  $b;
-        }
-        return;
-    }
-    sub prioritiesString {
-        my ($self) = @_;
-        my $pri = $self->{pri};
-        my @rules;
-        foreach my $a (keys %$pri) {
-            foreach my $b (keys %{$pri->{$a}}) {
-                push(@rules, sprintf("%s > %s [%d]", $a, $b, $pri->{$a}->{$b}));
-            }
-        }
-        return join(' ', @rules);
-    }
-    sub priorityAdd {
-        # add A-over-B rules
-        my ($self, $commit, $a, @b) = @_;
-        my $pri = $self->{pri};
-        foreach my $b (@b) {
-            if ($pri->{$a}->{$b}) { next; }
-            if ($pri->{$b}->{$a}) { next; }
-            if ($a eq $b)         { next; }
-            my $ruleNumber = ++$self->{ruleCount};
-            $pri->{$a}->{$b} = $ruleNumber;
-        }
-    }
-    sub priorityReplace {
-        my ($self, $a, $b, @p) = @_;
-        my $pri = $self->{pri};
-
-        if (!defined $b) {
-            return $self->priorityUnmention($a);
-        }
-
-        # replace A-over-X rules with B-over-X rules.
-        foreach my $x (keys %{$pri->{$a}}) { # iterate A-over-X rules
-            delete $pri->{$a}->{$x};
-
-            if ($pri->{$b}->{$x}) { next; }
-            if ($pri->{$x}->{$b}) { next; }
-            if ($b eq $x)         { next; }
-
-            my $ruleNumber = ++$self->{ruleCount};
-            $pri->{$b}->{$x} = $ruleNumber;
-        }
-        delete $pri->{$a} if !scalar keys %{$pri->{$a}};
-
-        # replace X-over-A rules with X-over-B rules.
-        foreach my $x (keys %$pri) {
-            if ($pri->{$x}->{$a}) { # IFF there's an X-over-A rule ...
-                delete $pri->{$x}->{$a};
-
-                if ($pri->{$b}->{$x}) { next; }
-                if ($pri->{$x}->{$b}) { next; }
-                if ($x eq $b)         { next; }
-
-                my $ruleNumber = ++$self->{ruleCount};
-                $pri->{$x}->{$b} = $ruleNumber;
-            }
-        }
-    }
-    sub priorityUnmention {
-        my ($self, $a) = @_;
-        my $pri = $self->{pri};
-        delete $pri->{$a};
-        foreach my $b (keys %$pri) {
-            delete $pri->{$b}->{$a};
-            delete $pri->{$b} if !scalar keys %{$pri->{$b}};
         }
     }
     sub printerFill {
@@ -481,12 +423,89 @@ package My::Git::Graph {
         return ($line1) if $useLine1;
         return ();
     }
+    sub usingPriorityFight {
+        my ($self) = @_;
+        return defined $self->{strategy} && $self->{strategy} eq 'priority-fight';
+    }
     sub eof {
         my ($self) = @_;
         $self->printerFlush();
     }
-}
-;                               # the semicolon keeps web-mode happy
+};                              # the semicolon keeps web-mode happy
+
+package My::PriorityFight {
+    sub new {
+        my ($class, %args) = @_;
+        my $self = bless(\%args, $class);
+        $self->{pri} = {};
+        return $self;
+    }
+    sub winner {
+        my ($self, $a, $b) = @_;
+        my $pri = $self->{pri};
+        if ($pri->{$a}->{$b}) {
+            return ($a, $b) if wantarray;
+            return  $a;
+        }
+        if ($pri->{$b}->{$a}) {
+            return ($b, $a) if wantarray;
+            return  $b;
+        }
+        return;
+    }
+    sub as_string {
+        my ($self) = @_;
+        my $pri = $self->{pri};
+        my @rules;
+        foreach my $a (keys %$pri) {
+            foreach my $b (keys %{$pri->{$a}}) {
+                push(@rules, sprintf("%s > %s [%d]", $a, $b, $pri->{$a}->{$b}));
+            }
+        }
+        return join(' ', @rules);
+    }
+    sub add {
+        my ($self, $commit, $a, @b) = @_;
+        my $pri = $self->{pri};
+        foreach my $b (@b) {
+            if ($pri->{$a}->{$b}) { next; }
+            if ($pri->{$b}->{$a}) { next; }
+            if ($a eq $b)         { next; }
+            $pri->{$a}->{$b} = 1;
+        }
+    }
+    sub replace {
+        my ($self, $a, $b, @p) = @_;
+        my $pri = $self->{pri};
+        return $self->priorityUnmention($a) if !defined $b;
+        foreach my $x (keys %{$pri->{$a}}) {
+            delete $pri->{$a}->{$x};
+            if ($pri->{$b}->{$x}) { next; }
+            if ($pri->{$x}->{$b}) { next; }
+            if ($b eq $x)         { next; }
+            $pri->{$b}->{$x} = 1;
+        }
+        delete $pri->{$a} if !scalar keys %{$pri->{$a}};
+        foreach my $x (keys %$pri) {
+            if ($pri->{$x}->{$a}) {
+                delete $pri->{$x}->{$a};
+                if ($pri->{$b}->{$x}) { next; }
+                if ($pri->{$x}->{$b}) { next; }
+                if ($x eq $b)         { next; }
+                $pri->{$x}->{$b} = 1;
+            }
+        }
+    }
+    sub remove {
+        my ($self, $a) = @_;
+        my $pri = $self->{pri};
+        delete $pri->{$a};
+        foreach my $b (keys %$pri) {
+            delete $pri->{$b}->{$a};
+            delete $pri->{$b} if !scalar keys %{$pri->{$b}};
+        }
+    }
+};
 
 =head1 NAME
 
