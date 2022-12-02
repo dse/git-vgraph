@@ -198,8 +198,10 @@ package My::Git::Graph {
         my $maxCol = max grep { defined $_ } (values(%$columns), values(%$state1));
         my @diagLines1;
         my @diagLines2;
+        my $diagLinesDrawn = 0;
         if ($self->usingPriorityFight) {
             if (defined $state2) {
+                $diagLinesDrawn = 1;
                 my $col1 = $state1->{$commit};
                 my $col2 = $state1->{$firstParent};
                 @diagLines1 = $self->diagonalGraphLines($maxCol, $columns, $state1, $commit, @otherParents);
@@ -211,11 +213,10 @@ package My::Git::Graph {
                 $state2->{$firstParent} = $state2->{$commit};
                 delete $state2->{$commit};
                 # END HACK
-            } else {
-                delete $state1->{$commit};
-                @diagLines1 = $self->diagonalGraphLines($maxCol, $columns, $state1, $commit, $firstParent, @otherParents);
             }
-        } else {
+        }
+        if (!$diagLinesDrawn) {
+            $diagLinesDrawn = 1;
             delete $state1->{$commit};
             @diagLines1 = $self->diagonalGraphLines($maxCol, $columns, $state1, $commit, $firstParent, @otherParents);
             # @diagLines1 = $self->drawGraphLines(
