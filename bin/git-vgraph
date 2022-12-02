@@ -11,6 +11,7 @@ our %options;
 our @gitCmd = ('git', 'log', '--parents', '--color=always');
 sub gitCommandOption {
     my ($name, $state, $value) = @_;
+    $state = $state // 'no-argument';
     $value = $value // '';
     my $result = $name;
     if ($state eq 'required') {
@@ -377,7 +378,9 @@ package My::Git::Graph {
         }
         if ($self->{colSep} < 3) {
             foreach my $column (@childColumns) {
-                substr($line2, $column * $colSep, 1) = '|';
+                if ($column == $parentColumn - 1 || $column == $parentColumn + 1) {
+                    substr($line2, $column * $colSep, 1) = '|';
+                }
             }
         }
         if (defined $markColumn) {
@@ -568,8 +571,7 @@ package My::Printer {
         $string =~ s{\e\[[0-9;]*m}{}g;
         return length $string;
     }
-}
-;
+};
 
 =head1 NAME
 
