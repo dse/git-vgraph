@@ -235,13 +235,13 @@ package My::Git::Graph {
             my @verticalColumns = ($col2, (map { $columns->{$_} }
                                            grep { defined $state1->{$_} && $columns->{$_} == $state1->{$_} }
                                            keys %$columns));
-            my @childColumns = map { $state1->{$_} } @otherParents;
+            my @diagonalToColumns = map { $state1->{$_} } @otherParents;
             @diagLines1 = $self->drawGraphLines(
                 mode => 'diagonals',
                 maxCol => $maxCol,
                 verticalColumns => [@verticalColumns],
-                parentColumn => $columns->{$commit},
-                childColumns => [@childColumns],
+                diagonalFromColumn => $columns->{$commit},
+                diagonalToColumns => [@diagonalToColumns],
             );
 
             # now we move first parent $col2 to $col1
@@ -250,8 +250,8 @@ package My::Git::Graph {
                 mode => 'diagonals',
                 maxCol => $maxCol,
                 verticalColumns => [@verticalColumns],
-                parentColumn => $col2,
-                childColumns => [$col1],
+                diagonalFromColumn => $col2,
+                diagonalToColumns => [$col1],
             );
 
             $state2->{$firstParent} = $state2->{$commit};
@@ -264,13 +264,13 @@ package My::Git::Graph {
             my @verticalColumns = (map { $columns->{$_} }
                                    grep { defined $state1->{$_} && $columns->{$_} == $state1->{$_} }
                                    keys %$columns);
-            my @childColumns = map { $state1->{$_} } ($firstParent, @otherParents);
+            my @diagonalToColumns = map { $state1->{$_} } ($firstParent, @otherParents);
             @diagLines1 = $self->drawGraphLines(
                 mode => 'diagonals',
                 maxCol => $maxCol,
                 verticalColumns => [@verticalColumns],
-                parentColumn => $columns->{$commit},
-                childColumns => [@childColumns],
+                diagonalFromColumn => $columns->{$commit},
+                diagonalToColumns => [@diagonalToColumns],
             );
         }
         my $fillLine = $self->verticalGraphLine($maxCol, $state2 // $state1);
@@ -320,8 +320,8 @@ package My::Git::Graph {
         my $mode            = $args{mode};
         my $maxCol          = $args{maxCol};
         my @verticalColumns = eval { @{$args{verticalColumns}} };
-        my $parentColumn    = $args{parentColumn};
-        my @childColumns    = eval { @{$args{childColumns}} };
+        my $diagonalFromColumn    = $args{diagonalFromColumn};
+        my @diagonalToColumns    = eval { @{$args{diagonalToColumns}} };
         my $markColumn      = $args{markColumn};
 
         if ($mode eq 'verticals') {
@@ -333,43 +333,43 @@ package My::Git::Graph {
         my $useLine2;
         my $line1 = ' ' x ($maxCol * $colSep + 1);
         my $line2 = ' ' x ($maxCol * $colSep + 1);
-        my @leftColumns  = grep { $_ < $parentColumn } @childColumns;
-        my @rightColumns = grep { $_ > $parentColumn } @childColumns;
+        my @leftColumns  = grep { $_ < $diagonalFromColumn } @diagonalToColumns;
+        my @rightColumns = grep { $_ > $diagonalFromColumn } @diagonalToColumns;
 
-        if (defined $parentColumn) {
+        if (defined $diagonalFromColumn) {
             if (scalar @leftColumns) {
                 $useLine1 = 1;
-                substr($line1, $parentColumn * $colSep - 1, 1) = '/';
+                substr($line1, $diagonalFromColumn * $colSep - 1, 1) = '/';
                 my $leftmostColumn = min @leftColumns;
                 foreach my $column (@leftColumns) {
-                    next if $column == $parentColumn - 1 && $colSep < 3;
+                    next if $column == $diagonalFromColumn - 1 && $colSep < 3;
                     $useLine2 = 1;
                     substr($line2, $column * $colSep + 1, 1) = '/';
                 }
                 my $pos1 = $leftmostColumn * $colSep + 2;
-                my $pos2 = $parentColumn * $colSep - 2;
+                my $pos2 = $diagonalFromColumn * $colSep - 2;
                 if ($pos1 <= $pos2) {
                     substr($line1, $pos1, $pos2 - $pos1 + 1) = '_' x ($pos2 - $pos1 + 1);
                 }
             }
             if (scalar @rightColumns) {
                 $useLine1 = 1;
-                substr($line1, $parentColumn * $colSep + 1, 1) = '\\';
+                substr($line1, $diagonalFromColumn * $colSep + 1, 1) = '\\';
                 my $rightmostColumn = max @rightColumns;
                 foreach my $column (@rightColumns) {
-                    next if $column == $parentColumn + 1 && $colSep < 3;
+                    next if $column == $diagonalFromColumn + 1 && $colSep < 3;
                     $useLine2 = 1;
                     substr($line2, $column * $colSep - 1, 1) = '\\';
                 }
-                my $pos1 = $parentColumn * $colSep + 2;
+                my $pos1 = $diagonalFromColumn * $colSep + 2;
                 my $pos2 = $rightmostColumn * $colSep - 2;
                 if ($pos1 <= $pos2) {
                     substr($line1, $pos1, $pos2 - $pos1 + 1) = '_' x ($pos2 - $pos1 + 1);
                 }
             }
-            if (grep { $parentColumn == $_ } @childColumns) {
-                substr($line1, $parentColumn * $colSep, 1) = '|';
-                substr($line2, $parentColumn * $colSep, 1) = '|';
+            if (grep { $diagonalFromColumn == $_ } @diagonalToColumns) {
+                substr($line1, $diagonalFromColumn * $colSep, 1) = '|';
+                substr($line2, $diagonalFromColumn * $colSep, 1) = '|';
             }
         }
         foreach my $column (@verticalColumns) {
@@ -377,8 +377,8 @@ package My::Git::Graph {
             substr($line2, $column * $colSep, 1) = '|';
         }
         if ($self->{colSep} < 3) {
-            foreach my $column (@childColumns) {
-                if ($column == $parentColumn - 1 || $column == $parentColumn + 1) {
+            foreach my $column (@diagonalToColumns) {
+                if ($column == $diagonalFromColumn - 1 || $column == $diagonalFromColumn + 1) {
                     substr($line2, $column * $colSep, 1) = '|';
                 }
             }
