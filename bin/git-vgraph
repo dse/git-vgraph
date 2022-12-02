@@ -448,7 +448,7 @@ package My::Printer {
     }
     sub setLeftFill {
         my ($self, $text) = @_;
-        $self->{leftFill} = $text // '';
+        $self->{leftFill} = $text;
     }
     sub printLeft {
         my ($self, $text) = @_;
@@ -478,7 +478,7 @@ package My::Printer {
         while (scalar @$L || scalar @$R) {
             my $left = shift(@$L);
             my $right = shift(@$R);
-            $self->printLine($left // $self->{fillLine}, $right);
+            $self->printLine($left // $self->{leftFill} // '', $right);
         }
     }
     sub printLine {
@@ -486,7 +486,7 @@ package My::Printer {
         return if !defined $left && !defined $right;
         $left //= '';
         $right //= '';
-        $right .= ' ' x $self->{minSpace};
+        $left .= ' ' x $self->{minSpace};
         my $len = printedLength($left);
         if ($len < $self->{minCol}) {
             $left .= ' ' x ($self->{minCol} - $len);
