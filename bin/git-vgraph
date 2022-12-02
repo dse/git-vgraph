@@ -110,7 +110,6 @@ if ($options{stdin}) {
 
 package My::Git::Graph {
     use Text::Tabs qw(expand);
-    use List::Util qw(min max uniq);
     our $RX_ESCAPE;
     BEGIN {
         $RX_ESCAPE = qr{\e\[[0-9;]*m};
@@ -118,13 +117,10 @@ package My::Git::Graph {
     sub new {
         my ($class, %args) = @_;
         my $self = bless(\%args, $class);
-        $self->{strategy} //= $self->{options}->{strategy};
-        $self->{colSep} //= ($self->{options}->{colSep} // 3);
-        $self->{abbrev} //= ($self->{options}->{abbrev} // 8);
-        $self->{bullet} //= "\N{BLACK CIRCLE}";
-        $self->{pri} = My::PriorityFight->new() if $self->usingPriorityFight;
-        $self->{printer} = My::Printer->new();
+        $self->{vgraph} = My::VGraph->new(%args);
+        $self->{printer} = My::Printer->new(%args);
         $self->{printer}->{color} = 0 if !-t 1 && !$self->{options}->{isPaging};
+        $self->{abbrev} //= ($self->{options}->{abbrev} // 8);
         return $self;
     }
     sub parseLine {
@@ -155,10 +151,53 @@ package My::Git::Graph {
     sub startCommit {
         my ($self, $commit, $firstParent, @otherParents) = @_;
         $self->{printer}->flush();
+        my $data = $self->{vgraph}->commit($commit, $firstParent, @otherParents);
+        my @left = @{$data->{left}};
+        my @right = @{$data->{right}};
+        my $leftFill = $data->{leftFill};
+        $self->{printer}->setLeftFill($leftFill);
+        foreach my $line (@left) {
+            $self->{printer}->printLeft($line);
+        }
+        foreach my $line (@right) {
+            $self->{printer}->printRight($line);
+        }
+    }
+    sub commitLogLine {
+        my ($self, $line) = @_;
+        $self->{printer}->printRight($line);
+    }
+    sub eof {
+        my ($self) = @_;
+        $self->{printer}->flush();
+    }
+}
+;                               # the semicolon keeps web-mode happy
+
+package My::VGraph {
+    use List::Util qw(min max);
+    sub new {
+        my ($class, %args) = @_;
+        my $self = bless(\%args, $class);
+        $self->{strategy} //= $self->{options}->{strategy};
+        $self->{colSep} //= ($self->{options}->{colSep} // 3);
+        $self->{bullet} //= "\N{BLACK CIRCLE}";
+        $self->{pri} = My::PriorityFight->new(%args) if $self->usingPriorityFight;
+        return $self;
+    }
+    sub commit {
+        my ($self, @commitids) = @_;
+        my ($commit, @parents) = @commitids;
+        my ($firstParent, @otherParents) = @parents;
         my $reserved = $self->{RC} //= {};
         my $columns  = $self->{C} //= {};
         my $state1   = { %$columns };
         my $state2;
+
+        my @left;
+        my @right;
+        my $leftFill;
+
         if (!defined $columns->{$commit}) {
             $columns->{$commit} = $self->newColumn($columns);
             $state1->{$commit} = $columns->{$commit};
@@ -167,8 +206,8 @@ package My::Git::Graph {
                 # assigned same column, insert a "blank" line to render
                 # properly, and not mislead people that A's parent is B.
                 if ($columns->{$commit} == $self->{orphaned}) {
-                    $self->{printer}->printLeft($self->{orphanLine});
-                    $self->{printer}->printRight('');
+                    push(@left, $self->{orphanLine});
+                    push(@right, '');
                 }
                 delete $self->{orphanLine};
                 delete $self->{orphaned};
@@ -184,10 +223,14 @@ package My::Git::Graph {
             my $line1 = $self->verticalGraphLine($maxCol, $columns, $columns->{$commit});
             my $line2 = $self->verticalGraphLine($maxCol, $state1);
             $self->{orphanLine} = $line2; # may need later
-            $self->{printer}->setLeftFill($line2);
-            $self->{printer}->printLeft($line1);
+            $leftFill = $line2;
+            push(@left, $line1);
             %$columns = %$state1;
-            return;
+            return {
+                left => \@left,
+                right => \@right,
+                leftFill => $leftFill,
+            };
         }
 
         $state1->{$firstParent} //= $columns->{$commit};
@@ -197,7 +240,6 @@ package My::Git::Graph {
 
         my $switchFromColumn;
         my $switchToColumn;
-
         if ($self->usingPriorityFight) {
             # normally if a commit and its first parent are assigned
             # to different columns, we move from current commit's
@@ -267,12 +309,11 @@ package My::Git::Graph {
                 diagonalsToColumns => [@diagonalsToColumns],
             );
         }
-        my $fillLine = $self->verticalGraphLine($maxCol, $state2 // $state1);
+        $leftFill = $self->verticalGraphLine($maxCol, $state2 // $state1);
         my $line0 = $self->verticalGraphLine($maxCol, $columns, $columns->{$commit});
-        $self->{printer}->setLeftFill($fillLine);
-        $self->{printer}->printLeft($line0);
+        push(@left, $line0);
         foreach my $diagLine (@diagLines1, @diagLines2) {
-            $self->{printer}->printLeft($diagLine);
+            push(@left, $diagLine);
         }
         if ($self->usingPriorityFight) {
             $self->{pri}->add($commit, $firstParent, @otherParents);
@@ -283,10 +324,12 @@ package My::Git::Graph {
         } else {
             %$columns = %$state1;
         }
-    }
-    sub commitLogLine {
-        my ($self, $line) = @_;
-        $self->{printer}->printRight($line);
+
+        return {
+            left => \@left,
+            right => \@right,
+            leftFill => $leftFill,
+        };
     }
     sub newColumn {
         my ($self, @states) = @_;
@@ -311,12 +354,15 @@ package My::Git::Graph {
     sub drawGraphLines {
         my ($self, %args) = @_;
 
-        my $mode            = $args{mode};
-        my $maxCol          = $args{maxCol};
-        my @verticalColumns = eval { @{$args{verticalColumns}} };
-        my $diagonalsFromColumn    = $args{diagonalsFromColumn};
-        my @diagonalsToColumns    = eval { @{$args{diagonalsToColumns}} };
-        my $markColumn      = $args{markColumn};
+        # conceptually specifies what kind of drawing you're doing; in
+        # reality only determines type of return value.
+        my $mode = $args{mode};
+
+        my $maxCol              = $args{maxCol};
+        my @verticalColumns     = eval { @{$args{verticalColumns}} };
+        my $diagonalsFromColumn = $args{diagonalsFromColumn};
+        my @diagonalsToColumns  = eval { @{$args{diagonalsToColumns}} };
+        my $markColumn          = $args{markColumn};
 
         if ($mode eq 'verticals') {
             return if !scalar @verticalColumns && !defined $markColumn;
@@ -399,12 +445,8 @@ package My::Git::Graph {
         my ($self) = @_;
         return defined $self->{strategy} && $self->{strategy} eq 'leftmost-column';
     }
-    sub eof {
-        my ($self) = @_;
-        $self->{printer}->flush();
-    }
 }
-;                               # the semicolon keeps web-mode happy
+;                               # keep web-mode happy
 
 package My::PriorityFight {
     sub new {
@@ -496,7 +538,8 @@ package My::PriorityFight {
             delete $pri->{$b} if !scalar keys %{$pri->{$b}};
         }
     }
-};
+}
+;                               # the semicolon keeps web-mode happy
 
 package My::Printer {
     sub new {
@@ -565,7 +608,8 @@ package My::Printer {
         $string =~ s{\e\[[0-9;]*m}{}g;
         return length $string;
     }
-};
+}
+;                               # the semicolon keeps web-mode happy
 
 =head1 NAME
 
