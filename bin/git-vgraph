@@ -12,30 +12,44 @@ STDERR->autoflush(1);
 
 our %options;
 our @gitCmd = ('git', 'log', '--parents', '--color=always');
+sub gitCommandOption {
+    my ($name, $state, $value) = @_;
+    $value = $value // '';
+    my $result = $name;
+    if ($state eq 'required') {
+        $result .= '=' . $value;
+    }
+    if ($state eq 'optional') {
+        $result .= '=' . $value if $value ne '';
+    }
+    push(@gitCmd, $result);
+}
 
 use Getopt::Long;
 Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case');
 Getopt::Long::GetOptions(
-    'all'               => sub { push(@gitCmd, '--all'); },
-    'decorate:s'        => sub { if ($_[1] =~ m{\S}) { push(@gitCmd, '--decorate=' . $_[1]); } else { push(@gitCmd, '--decorate'); } },
-    'no-decorate'       => sub { push(@gitCmd, '--no-decorate'); },
-    'date-order'        => sub { push(@gitCmd, '--date-order'); },
-    'author-date-order' => sub { push(@gitCmd, '--author-date-order'); },
-    'topo-order'        => sub { push(@gitCmd, '--topo-order'); },
-    'pretty:s'          => sub { if ($_[1] =~ m{\S}) { push(@gitCmd, '--pretty=' . $_[1]); } else { push(@gitCmd, '--pretty'); } },
-    'format=s'          => sub { push(@gitCmd, '--format=' . $_[1]); },
-    'abbrev-commit'     => sub { push(@gitCmd, '--abbrev-commit'); },
-    'no-abbrev-commit'  => sub { push(@gitCmd, '--no-abbrev-commit'); },
-    'oneline'           => sub { push(@gitCmd, '--oneline'); },
-    'date=s'            => sub { push(@gitCmd, '--date=' . $_[1]); },
-    'parents'           => sub { $options{parents} = 1; },
-    'name-status'       => sub { push(@gitCmd, '--name-status'); },
-    'abbrev:s'          => sub { $options{abbrev} = $_[1] if $_[1] =~ m{\S};
-                                 if ($_[1] =~ m{\S}) { push(@gitCmd, '--abbrev=' . $_[1]); } else { push(@gitCmd, '--abbrev'); } },
+    'all'               => sub { gitCommandOption('--all'); },
+    'decorate:s'        => sub { gitCommandOption('--decorate', 'optional', $_[1]); },
+    'no-decorate'       => sub { gitCommandOption('--no-decorate'); },
+    'date-order'        => sub { gitCommandOption('--date-order'); },
+    'author-date-order' => sub { gitCommandOption('--author-date-order'); },
+    'topo-order'        => sub { gitCommandOption('--topo-order'); },
+    'pretty:s'          => sub { gitCommandOption('--pretty', 'optional', $_[1]); },
+    'format=s'          => sub { gitCommandOption('--format=', 'required', $_[1]); },
+    'abbrev-commit'     => sub { gitCommandOption('--abbrev-commit'); },
+    'no-abbrev-commit'  => sub { gitCommandOption('--no-abbrev-commit'); },
+    'oneline'           => sub { gitCommandOption('--oneline'); },
+    'date=s'            => sub { gitCommandOption('--date=', 'required', $_[1]); },
+    'name-status'       => sub { gitCommandOption('--name-status'); },
     'graph'             => sub { }, # no effect
-    'adog|goad'         => sub { push(@gitCmd, '--oneline', '--all', '--decorate'); },
+
+    # special handling
+    'parents'           => sub { $options{parents} = 1; },
+    'abbrev:s'          => sub { $options{abbrev} = $_[1] if $_[1] ne '';
+                                 gitCommandOption('--abbrev', 'optional', $_[1]); },
 
     # our options
+    'adog|goad'         => sub { push(@gitCmd, '--oneline', '--all', '--decorate'); },
     'priority-fight'    => sub { $options{strategy} = 'priority-fight'; },
     'narrow'            => sub { $options{colSep} = 2; },
     'stdin'             => sub { $options{stdin} = 1; },
@@ -55,9 +69,9 @@ git-log(1) options accepted:
     --abbrev-commit, --no-abbrev-commit
     --date=<format>
     --name-status
-    --no-color
     --abbrev[=<n>]
-    --parents, --graph (have no effect)
+    --parents
+    --graph (has no effect)
 END
 
 my $g = My::Git::Graph->new(options => \%options);
@@ -533,7 +547,6 @@ git-vgraph - alternative to git-graph(1)
         [--abbrev-commit], [--no-abbrev-commit]
         [--date=<format>]
         [--name-status]
-        [--no-color]
         [--abbrev[=<n>]]
         [--adog|--goad]
 
@@ -593,10 +606,9 @@ accepts have any effect.
     --no-abbrev-commit
     --date=<format>
     --name-status
-    --no-color
     --abbrev[=<n>]
+    --parents
 
-    --parents (has no effect)
     --graph (has no effect)
 
 =head1 BUGS
@@ -610,9 +622,8 @@ ticket number and all of the following conditions are true:
 
 =item *
 
-C<--no-color> or an equivalent is specified, either to this program
-directly, or when running L<git-log> to generate the output fed to
-this program.
+C<--no-color> or an equivalent is specified when running L<git-log> to
+generate the output fed to this program.
 
 =item *
 
