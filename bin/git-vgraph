@@ -116,6 +116,8 @@ package My::Git::Graph {
         $self->{json} = JSON->new()->ascii(1)->pretty(0)->canonical(1);
         $self->{commitCount} = 0;
         $self->{ruleCount} = 0;
+        $self->{printer} = My::Printer->new();
+        $self->{printer}->{color} = 0 if !-t 1 && !$self->{options}->{isPaging};
         return $self;
     }
     sub parseLine {
@@ -146,7 +148,7 @@ package My::Git::Graph {
     sub startCommit {
         my ($self, $commit, $firstParent, @otherParents) = @_;
         $self->{commitCount} += 1;
-        $self->printerFlush();
+        $self->{printer}->flush();
         my $reserved = $self->{RC} //= {};
         my $columns  = $self->{C} //= {};
         my $state1   = { %$columns };
@@ -159,8 +161,8 @@ package My::Git::Graph {
                 # assigned same column, insert a "blank" line to render
                 # properly, and not mislead people that A's parent is B.
                 if ($columns->{$commit} == $self->{orphaned}) {
-                    $self->printerGraph($self->{orphanLine});
-                    $self->printerText('');
+                    $self->{printer}->printLeft($self->{orphanLine});
+                    $self->{printer}->printRight('');
                 }
                 delete $self->{orphanLine};
                 delete $self->{orphaned};
@@ -176,8 +178,8 @@ package My::Git::Graph {
             my $line1 = $self->verticalGraphLine($maxCol, $columns, $columns->{$commit});
             my $line2 = $self->verticalGraphLine($maxCol, $state1);
             $self->{orphanLine} = $line2; # may need later
-            $self->printerFill($line2);
-            $self->printerGraph($line1);
+            $self->{printer}->setLeftFill($line2);
+            $self->{printer}->printLeft($line1);
             %$columns = %$state1;
             return;
         }
@@ -237,10 +239,10 @@ package My::Git::Graph {
         }
         my $fillLine = $self->verticalGraphLine($maxCol, $state2 // $state1);
         my $line0 = $self->verticalGraphLine($maxCol, $columns, $columns->{$commit});
-        $self->printerFill($fillLine);
-        $self->printerGraph($line0);
+        $self->{printer}->setLeftFill($fillLine);
+        $self->{printer}->printLeft($line0);
         foreach my $diagLine (@diagLines1, @diagLines2) {
-            $self->printerGraph($diagLine);
+            $self->{printer}->printLeft($diagLine);
         }
         if ($self->usingPriorityFight) {
             $self->{pri}->add($commit, $firstParent, @otherParents);
@@ -256,7 +258,7 @@ package My::Git::Graph {
     }
     sub commitLogLine {
         my ($self, $line) = @_;
-        $self->printerText($line);
+        $self->{printer}->printRight($line);
     }
     sub newColumn {
         my ($self, @states) = @_;
@@ -267,71 +269,6 @@ package My::Git::Graph {
                 return $i;
             }
         }
-    }
-    sub printerFill {
-        my ($self, $text) = @_;
-        $self->{fillLine} = $text // '';
-    }
-    sub printerText {
-        my ($self, $text) = @_;
-        push(@{$self->{textLines}}, $text);
-        $self->printerOut();
-    }
-    sub printerGraph {
-        my ($self, $text) = @_;
-        push(@{$self->{graphLines}}, $text);
-        $self->printerOut();
-    }
-    sub printerOut {
-        my ($self) = @_;
-        my $g = $self->{graphLines};
-        my $t = $self->{textLines};
-        while (scalar @$g && scalar @$t) {
-            my $graphLine = shift(@$g);
-            my $textLine = shift(@$t);
-            $self->printerPrintLine($graphLine, $textLine);
-        }
-    }
-    sub printerFlush {
-        my ($self) = @_;
-        my $g = $self->{graphLines};
-        my $t = $self->{textLines};
-        $self->printerOut();
-        while (scalar @$g || scalar @$t) {
-            my $graphLine = shift(@$g);
-            my $textLine = shift(@$t);
-            if (defined $graphLine && defined $textLine) {
-                $self->printerPrintLine($graphLine, $textLine);
-            } elsif (defined $graphLine) {
-                $self->printerPrintLine($graphLine, undef);
-            } elsif (defined $textLine) {
-                $self->printerPrintLine($self->{fillLine}, $textLine);
-            }
-        }
-    }
-    sub printerPrintLine {
-        my ($self, $graphLine, $textLine) = @_;
-        return if !defined $graphLine && !defined $textLine;
-        $graphLine //= '';
-        $textLine //= '';
-        $graphLine .= ' ' x $self->{minSpace};
-        my $len = $self->printedLength($graphLine);
-        if ($len < $self->{minCol}) {
-            $graphLine .= ' ' x ($self->{minCol} - $len);
-        }
-        if (!-t 1) {
-            if (!$self->{options}->{isPaging}) {
-                $graphLine =~ s{\e[[0-9;]*m}{}g if defined $graphLine;
-                $textLine =~ s{\e[[0-9;]*m}{}g if defined $textLine;
-            }
-        }
-        my $outputLine = $graphLine . $textLine;
-        print($outputLine, "\n");
-    }
-    sub printedLength {
-        my ($self, $string) = @_;
-        $string =~ s{${RX_ESCAPE}}{}g;
-        return length $string;
     }
     sub verticalGraphLine {
         my ($self, $maxCol, $A, $mark) = @_;
@@ -420,7 +357,7 @@ package My::Git::Graph {
     }
     sub eof {
         my ($self) = @_;
-        $self->printerFlush();
+        $self->{printer}->flush();
     }
 };                              # the semicolon keeps web-mode happy
 
@@ -495,6 +432,75 @@ package My::PriorityFight {
             delete $pri->{$b}->{$a};
             delete $pri->{$b} if !scalar keys %{$pri->{$b}};
         }
+    }
+};
+
+package My::Printer {
+    sub new {
+        my ($class, %args) = @_;
+        my $self = bless(\%args, $class);
+        $self->{minSpace} //= 6;
+        $self->{minCol} //= 24;
+        $self->{color} //= 1;
+        $self->{leftLines} = [];
+        $self->{rightLines} = [];
+        return $self;
+    }
+    sub setLeftFill {
+        my ($self, $text) = @_;
+        $self->{leftFill} = $text // '';
+    }
+    sub printLeft {
+        my ($self, $text) = @_;
+        push(@{$self->{leftLines}}, $text);
+        $self->printOut();
+    }
+    sub printRight {
+        my ($self, $text) = @_;
+        push(@{$self->{rightLines}}, $text);
+        $self->printOut();
+    }
+    sub printOut {
+        my ($self) = @_;
+        my $L = $self->{leftLines};
+        my $R = $self->{rightLines};
+        while (scalar @$L && scalar @$R) {
+            my $left = shift(@$L);
+            my $right = shift(@$R);
+            $self->printLine($left, $right);
+        }
+    }
+    sub flush {
+        my ($self) = @_;
+        my $L = $self->{leftLines};
+        my $R = $self->{rightLines};
+        $self->printOut();
+        while (scalar @$L || scalar @$R) {
+            my $left = shift(@$L);
+            my $right = shift(@$R);
+            $self->printLine($left // $self->{fillLine}, $right);
+        }
+    }
+    sub printLine {
+        my ($self, $left, $right) = @_;
+        return if !defined $left && !defined $right;
+        $left //= '';
+        $right //= '';
+        $right .= ' ' x $self->{minSpace};
+        my $len = printedLength($left);
+        if ($len < $self->{minCol}) {
+            $left .= ' ' x ($self->{minCol} - $len);
+        }
+        if (!$self->{color}) {
+            $left  =~ s{\e\[[0-9;]*m}{}g;
+            $right =~ s{\e\[[0-9;]*m}{}g;
+        }
+        print($left, $right, "\n");
+    }
+    sub printedLength {
+        my ($string) = @_;
+        $string =~ s{\e\[[0-9;]*m}{}g;
+        return length $string;
     }
 };
 
