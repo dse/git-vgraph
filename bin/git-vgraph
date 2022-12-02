@@ -181,7 +181,6 @@ package My::VGraph {
         my $self = bless(\%args, $class);
         $self->{strategy} //= $self->{options}->{strategy};
         $self->{colSep} //= ($self->{options}->{colSep} // 3);
-        $self->{bullet} //= "\N{BLACK CIRCLE}";
         $self->{pri} = My::PriorityFight->new(%args) if $self->usingPriorityFight;
         $self->{draw} = My::VGraph::Draw->new(%args);
         return $self;
@@ -358,6 +357,7 @@ package My::VGraph::Draw {
     sub new {
         my ($class, %args) = @_;
         my $self = bless(\%args, $class);
+        $self->{bullet} //= "\N{BLACK CIRCLE}";
         return $self;
     }
     sub vertical {
