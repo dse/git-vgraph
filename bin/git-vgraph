@@ -38,7 +38,6 @@ Getopt::Long::GetOptions(
 
     # our options
     'narrow'            => sub { $options{colSep} = 2; },
-    'test'              => sub { $options{test} = 1; },
     'stdin'             => sub { $options{stdin} = 1; },
     'help'              => sub { usage(); exit(0); },
 ) or die("Type '$PROGNAME --help' for help.\n");
@@ -112,9 +111,8 @@ package My::Git::Graph {
         $self->{colSep} //= ($self->{options}->{colSep} // 3);
         $self->{abbrev} //= ($self->{options}->{abbrev} // 8);
         $self->{bullet} = "\N{BLACK CIRCLE}";
-        $self->{abbrev} //= 1 if $self->{test};
+        $self->{abbrev} //= 8;
         $self->{pri} = {};
-        $self->{why} = {};
         $self->{json} = JSON->new()->ascii(1)->pretty(0)->canonical(1);
         $self->{commitCount} = 0;
         $self->{ruleCount} = 0;
@@ -122,10 +120,6 @@ package My::Git::Graph {
     }
     sub parseLine {
         my ($self, $line) = @_;
-        if ($self->{test}) {
-            return if $line !~ m{\S};
-            return if $line =~ m{^\s*#};
-        }
         $line =~ s{\R\z}{};    # safer than chomp regarding \r\n vs \n
         local $_ = $line;
         $_ = expand($_);
@@ -194,9 +188,6 @@ package My::Git::Graph {
                 $state1->{$otherParent} = $self->newColumn($state1);
             }
         }
-        if ($self->isTesting) {
-            $self->{appendToFirstLine} = $self->prioritiesString();
-        }
         if ($firstParentWasAllocated) {
             my $col1 = $state1->{$commit};
             my $col2 = $state1->{$firstParent};
@@ -239,7 +230,6 @@ package My::Git::Graph {
         my $line0 = $self->verticalGraphLine($maxCol, $columns, $columns->{$commit});
         $self->printerFill($fillLine);
         $self->printerGraph($line0);
-        # my @diagLines = $self->diagonalGraphLines($maxCol, $columns, $state1, $commit, $firstParent, @otherParents);
         foreach my $diagLine (@diagLines1, @diagLines2) {
             $self->printerGraph($diagLine);
         }
@@ -280,7 +270,6 @@ package My::Git::Graph {
     }
     sub prioritiesString {
         my ($self) = @_;
-        return unless $self->isTesting;
         my $pri = $self->{pri};
         my @rules;
         foreach my $a (keys %$pri) {
@@ -298,14 +287,8 @@ package My::Git::Graph {
             if ($pri->{$a}->{$b}) { next; }
             if ($pri->{$b}->{$a}) { next; }
             if ($a eq $b)         { next; }
-
             my $ruleNumber = ++$self->{ruleCount};
             $pri->{$a}->{$b} = $ruleNumber;
-
-            if ($self->isTesting) {
-                my $why = $self->{why};
-                $why->{$a}->{$b} = [undef, undef, $commit, $a, @b];
-            }
         }
     }
     sub priorityReplace {
@@ -326,11 +309,6 @@ package My::Git::Graph {
 
             my $ruleNumber = ++$self->{ruleCount};
             $pri->{$b}->{$x} = $ruleNumber;
-
-            if ($self->isTesting) {
-                my $why = $self->{why};
-                $why->{$b}->{$x} = [$a, $x, $a, $b, @p];
-            }
         }
         delete $pri->{$a} if !scalar keys %{$pri->{$a}};
 
@@ -345,11 +323,6 @@ package My::Git::Graph {
 
                 my $ruleNumber = ++$self->{ruleCount};
                 $pri->{$x}->{$b} = $ruleNumber;
-
-                if ($self->isTesting) {
-                    my $why = $self->{why};
-                    $why->{$x}->{$b} = [$x, $a, $a, $b, @p];
-                }
             }
         }
     }
@@ -359,8 +332,8 @@ package My::Git::Graph {
         delete $pri->{$a};
         foreach my $b (keys %$pri) {
             delete $pri->{$b}->{$a};
+            delete $pri->{$b} if !scalar keys %{$pri->{$b}};
         }
-        delete $pri->{$b} if !scalar keys %{$pri->{$b}};
     }
     sub printerFill {
         my ($self, $text) = @_;
@@ -402,7 +375,6 @@ package My::Git::Graph {
                 $self->printerPrintLine($self->{fillLine}, $textLine);
             }
         }
-        delete $self->{appendToFirstLine};
     }
     sub printerPrintLine {
         my ($self, $graphLine, $textLine) = @_;
@@ -421,10 +393,6 @@ package My::Git::Graph {
             }
         }
         my $outputLine = $graphLine . $textLine;
-        if (defined $self->{appendToFirstLine}) {
-            $outputLine .= ' ' . $self->{appendToFirstLine};
-            delete $self->{appendToFirstLine};
-        }
         print($outputLine, "\n");
     }
     sub printedLength {
@@ -516,16 +484,6 @@ package My::Git::Graph {
     sub eof {
         my ($self) = @_;
         $self->printerFlush();
-    }
-    sub isTesting { return shift()->{options}->{test}; }
-    sub DESTROY {
-        my ($self) = @_;
-        if ($self->isTesting) {
-            my $why = $self->{why};
-            printf("# chains of reasoning for %d commits consumed about %d bytes if JSON is what you go by\n",
-                   $self->{commitCount},
-                   length($self->{json}->encode($self->{why})));
-        }
     }
 }
 ;                               # the semicolon keeps web-mode happy
