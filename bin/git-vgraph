@@ -104,7 +104,7 @@ package My::Git::Graph {
         $self->{strategy} = undef;
         $self->{colSep} //= ($self->{options}->{colSep} // 3);
         $self->{abbrev} //= ($self->{options}->{abbrev} // 8);
-        $self->{bullet} = "\N{BLACK CIRCLE}";
+        $self->{bullet} //= "\N{BLACK CIRCLE}";
         $self->{pri} = My::PriorityFight->new() if $self->usingPriorityFight;
         $self->{printer} = My::Printer->new();
         $self->{printer}->{color} = 0 if !-t 1 && !$self->{options}->{isPaging};
