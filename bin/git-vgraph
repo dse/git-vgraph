@@ -48,6 +48,7 @@ Getopt::Long::GetOptions(
     # our options
     'adog|goad'         => sub { push(@gitCmd, '--oneline', '--all', '--decorate'); },
     'priority-fight'    => sub { $options{strategy} = 'priority-fight'; },
+    'leftmost-column'   => sub { $options{strategy} = 'leftmost-column'; },
     'narrow'            => sub { $options{colSep} = 2; },
     'stdin'             => sub { $options{stdin} = 1; },
     'help'              => sub { usage(); exit(0); },
@@ -199,11 +200,21 @@ package My::Git::Graph {
             # column $col1 to the first parent's column $col2.
             my $col1 = $state1->{$commit};
             my $col2 = $state1->{$firstParent};
-            if ($col1 ne $col2) {
+            if ($col1 != $col2) {
                 my ($winner, $loser) = $self->{pri}->winner($commit, $firstParent);
                 if (defined $winner && $state1->{$winner} == $col1) {
                     # we move first parent from $col2 to current
                     # commit's column $col1
+                    $state2 = { %$state1 };
+                }
+            }
+        }
+        if ($self->usingLeftmostColumn) {
+            my $col1 = $state1->{$commit};
+            my $col2 = $state1->{$firstParent};
+            if ($col1 != $col2) {
+                my $newCol = min($col1, $col2);
+                if ($newCol != $col2) {
                     $state2 = { %$state1 };
                 }
             }
@@ -364,6 +375,11 @@ package My::Git::Graph {
             substr($line1, $column * $colSep, 1) = '|';
             substr($line2, $column * $colSep, 1) = '|';
         }
+        if ($self->{colSep} < 3) {
+            foreach my $column (@childColumns) {
+                substr($line2, $column * $colSep, 1) = '|';
+            }
+        }
         if (defined $markColumn) {
             my $bullet = $self->{bullet};
             substr($line1, $markColumn * $colSep, 1) = $bullet;
@@ -381,6 +397,10 @@ package My::Git::Graph {
     sub usingPriorityFight {
         my ($self) = @_;
         return defined $self->{strategy} && $self->{strategy} eq 'priority-fight';
+    }
+    sub usingLeftmostColumn {
+        my ($self) = @_;
+        return defined $self->{strategy} && $self->{strategy} eq 'leftmost-column';
     }
     sub eof {
         my ($self) = @_;
@@ -479,8 +499,7 @@ package My::PriorityFight {
             delete $pri->{$b} if !scalar keys %{$pri->{$b}};
         }
     }
-}
-;
+};
 
 package My::Printer {
     sub new {
