@@ -174,30 +174,19 @@ package My::Git::Graph {
             return;
         }
 
+        $state1->{$firstParent} //= $columns->{$commit};
+        foreach my $otherParent (@otherParents) {
+            $state1->{$otherParent} //= $self->newColumn($state1);
+        }
+
         if ($self->usingPriorityFight) {
-            my $firstParentWasAllocated = defined $state1->{$firstParent};
-            if (!$firstParentWasAllocated) {
-                $state1->{$firstParent} = $columns->{$commit};
-            }
-            foreach my $otherParent (@otherParents) {
-                if (!defined $state1->{$otherParent}) {
-                    $state1->{$otherParent} = $self->newColumn($state1);
+            my $col1 = $state1->{$commit};
+            my $col2 = $state1->{$firstParent};
+            if ($col1 ne $col2) {
+                my ($winner, $loser) = $self->{pri}->winner($commit, $firstParent);
+                if (defined $winner && $state1->{$winner} == $col1) {
+                    $state2 = { %$state1 };
                 }
-            }
-            if ($firstParentWasAllocated) {
-                my $col1 = $state1->{$commit};
-                my $col2 = $state1->{$firstParent};
-                if ($col1 ne $col2) {
-                    my ($winner, $loser) = $self->{pri}->winner($commit, $firstParent);
-                    if (defined $winner && $state1->{$winner} == $col1) {
-                        $state2 = { %$state1 };
-                    }
-                }
-            }
-        } else {
-            $state1->{$firstParent} //= $columns->{$commit};
-            foreach my $otherParent (@otherParents) {
-                $state1->{$otherParent} //= $self->newColumn($state1);
             }
         }
 
