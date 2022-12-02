@@ -196,9 +196,7 @@ package My::Git::Graph {
         } else {
             $state1->{$firstParent} //= $columns->{$commit};
             foreach my $otherParent (@otherParents) {
-                if (!defined $state1->{$otherParent}) {
-                    $state1->{$otherParent} = $self->newColumn($state1);
-                }
+                $state1->{$otherParent} //= $self->newColumn($state1);
             }
         }
 
