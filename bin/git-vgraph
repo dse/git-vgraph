@@ -94,7 +94,6 @@ if ($options{stdin}) {
 package My::Git::Graph {
     use Text::Tabs qw(expand);
     use List::Util qw(min max uniq);
-    use JSON;
     our $RX_ESCAPE;
     BEGIN {
         $RX_ESCAPE = qr{\e\[[0-9;]*m};
@@ -103,19 +102,10 @@ package My::Git::Graph {
         my ($class, %args) = @_;
         my $self = bless(\%args, $class);
         $self->{strategy} = undef;
-        $self->{minCol} //= 24;
-        $self->{minSpace} //= 6;
-        $self->{graphLines} = [];
-        $self->{textLines} = [];
-        $self->{fillLine} = '';
         $self->{colSep} //= ($self->{options}->{colSep} // 3);
         $self->{abbrev} //= ($self->{options}->{abbrev} // 8);
         $self->{bullet} = "\N{BLACK CIRCLE}";
-        $self->{abbrev} //= 8;
         $self->{pri} = My::PriorityFight->new() if $self->usingPriorityFight;
-        $self->{json} = JSON->new()->ascii(1)->pretty(0)->canonical(1);
-        $self->{commitCount} = 0;
-        $self->{ruleCount} = 0;
         $self->{printer} = My::Printer->new();
         $self->{printer}->{color} = 0 if !-t 1 && !$self->{options}->{isPaging};
         return $self;
@@ -147,7 +137,6 @@ package My::Git::Graph {
     }
     sub startCommit {
         my ($self, $commit, $firstParent, @otherParents) = @_;
-        $self->{commitCount} += 1;
         $self->{printer}->flush();
         my $reserved = $self->{RC} //= {};
         my $columns  = $self->{C} //= {};
