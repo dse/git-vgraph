@@ -7,9 +7,6 @@ our $PROGNAME = basename($0);
 use File::Basename qw(basename);
 use POSIX qw(dup2);
 
-STDOUT->autoflush(1);
-STDERR->autoflush(1);
-
 our %options;
 our @gitCmd = ('git', 'log', '--parents', '--color=always');
 sub gitCommandOption {
@@ -75,6 +72,9 @@ git-log(1) options accepted:
 END
 
 my $g = My::Git::Graph->new(options => \%options);
+
+STDOUT->autoflush(1);
+STDERR->autoflush(1);
 
 # Let's pipe our own output through a pager.
 if (-t fileno(\*STDOUT)) {
