@@ -13,42 +13,28 @@ use POSIX qw(dup2);
 
 our %options;
 our @gitCmd = ('git', 'log', '--parents', '--color=always');
-sub gitCommandOption {
-    my ($name, $state, $value) = @_;
-    $state = $state // 'no-argument';
-    $value = $value // '';
-    my $result = $name;
-    if ($state eq 'required') {
-        $result .= '=' . $value;
-    }
-    if ($state eq 'optional') {
-        $result .= '=' . $value if $value ne '';
-    }
-    push(@gitCmd, $result);
-}
 
 use Getopt::Long;
 Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case');
 Getopt::Long::GetOptions(
-    'all'               => sub { gitCommandOption('--all'); },
-    'decorate:s'        => sub { gitCommandOption('--decorate', 'optional', $_[1]); },
-    'no-decorate'       => sub { gitCommandOption('--no-decorate'); },
-    'date-order'        => sub { gitCommandOption('--date-order'); },
-    'author-date-order' => sub { gitCommandOption('--author-date-order'); },
-    'topo-order'        => sub { gitCommandOption('--topo-order'); },
-    'pretty:s'          => sub { gitCommandOption('--pretty', 'optional', $_[1]); },
-    'format=s'          => sub { gitCommandOption('--format=', 'required', $_[1]); },
-    'abbrev-commit'     => sub { gitCommandOption('--abbrev-commit'); },
-    'no-abbrev-commit'  => sub { gitCommandOption('--no-abbrev-commit'); },
-    'oneline'           => sub { gitCommandOption('--oneline'); },
-    'date=s'            => sub { gitCommandOption('--date=', 'required', $_[1]); },
-    'name-status'       => sub { gitCommandOption('--name-status'); },
+    'all'               => sub { push(@gitCmd, '--all');                                              },
+    'decorate:s'        => sub { push(@gitCmd, '--decorate'); $gitCmd[-1] .= "=$_[1]" if $_[1] ne ''; },
+    'no-decorate'       => sub { push(@gitCmd, '--no-decorate');                                      },
+    'date-order'        => sub { push(@gitCmd, '--date-order');                                       },
+    'author-date-order' => sub { push(@gitCmd, '--author-date-order');                                },
+    'topo-order'        => sub { push(@gitCmd, '--topo-order');                                       },
+    'pretty:s'          => sub { push(@gitCmd, '--pretty');   $gitCmd[-1] .= "=$_[1]" if $_[1] ne ''; },
+    'format=s'          => sub { push(@gitCmd, '--format');   $gitCmd[-1] .= "=$_[1]";                },
+    'abbrev-commit'     => sub { push(@gitCmd, '--abbrev-commit');                                    },
+    'no-abbrev-commit'  => sub { push(@gitCmd, '--no-abbrev-commit');                                 },
+    'oneline'           => sub { push(@gitCmd, '--oneline');                                          },
+    'date=s'            => sub { push(@gitCmd, '--date');     $gitCmd[-1] .= "=$_[1]";                },
+    'name-status'       => sub { push(@gitCmd, '--name-status');                                      },
     'graph'             => sub { }, # no effect
 
     # special handling
     'parents'           => sub { $options{parents} = 1; },
-    'abbrev:s'          => sub { $options{abbrev} = $_[1] if $_[1] ne '';
-                                 gitCommandOption('--abbrev', 'optional', $_[1]); },
+    'abbrev:s'          => sub { push(@gitCmd, '--abbrev'); $gitCmd[-1] .= "=$_[1]" if $_[1] ne ''; },
 
     # our options
     'adog|goad'         => sub { push(@gitCmd, '--oneline', '--all', '--decorate'); },
