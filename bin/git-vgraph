@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 use warnings;
 use strict;
-use open qw(locale);
+use open qw(:locale);
 our $PROGNAME = basename($0);
 
 use FindBin;
@@ -10,6 +10,7 @@ use lib "${FindBin::Bin}/../lib";
 use My::Git::VGraph::Parser;
 use File::Basename qw(basename);
 use POSIX qw(dup2);
+use charnames ();
 
 our %options;
 our @gitCmd = ('git', 'log', '--parents', '--color=always');
@@ -30,6 +31,7 @@ Getopt::Long::GetOptions(
     'oneline'           => sub { push(@gitCmd, '--oneline');                                          },
     'date=s'            => sub { push(@gitCmd, '--date');     $gitCmd[-1] .= "=$_[1]";                },
     'name-status'       => sub { push(@gitCmd, '--name-status');                                      },
+    'bullet=s'          => sub { $options{bullet} = interpretChar($_[1]); },
     'graph'             => sub { }, # no effect
 
     # special handling
@@ -45,11 +47,30 @@ Getopt::Long::GetOptions(
     'help'              => sub { usage(); exit(0); },
 ) or die("Type '$PROGNAME --help' for help.\n");
 
+sub interpretChar {
+    my ($char) = @_;
+    if (length($char) == 1) {
+        return $char;
+    }
+    if ($char =~ m{^(?:u\+?|0?x)(?<hex>[[:xdigit:]]+)$}i) {
+        return chr(hex($+{hex}));
+    }
+    if ($char =~ m{^\d+$}) {
+        return chr(0 + $char);
+    }
+    my $code = charnames::vianame($char);
+    if (defined $code) {
+        return chr($code);
+    }
+    die("invalid character specification: $char\n");
+}
+
 sub usage { print(<<"END"); }
 usage: ${PROGNAME} [<option> ...]
     --adog, --goad   sets --oneline, --all, --decorate
     --stdin          read git log --parents output from stdin
     --help           print this message
+    --bullet=<char>  specify U+XXXX, decimal code, name, or single char
 git-log(1) options accepted:
     --all
     --decorate[=<short|full|auto|no>], --no-decorate
@@ -164,6 +185,22 @@ with the C<--parents> option specified.
 
 NOTE: In this mode, none of the C<git log> options this program
 accepts have any effect.
+
+=item --bullet=<char>
+
+Specifies a character to be used as a bullet for each commit.
+You can specify a single-character string:
+
+    --bullet='*'
+    --bullet='#'
+
+For non-ASCII Unicode characters, you can also specify a codepoint as
+"U+XXXX", "0xXXXX", or decimal; or the character's name.
+
+    --bullet=U+2B24
+    --bullet=0x2b24
+    --bullet=11044
+    --bullet="BLACK LARGE CIRCLE"
 
 =back
 
