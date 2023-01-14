@@ -1,0 +1,16 @@
+00000000 a2aab19c 11111111 5bf0ed0b
+a2aab19c 1f69305a 90243c4c
+5bf0ed0b 1f69305a 90243c4c
+90243c4c 77d47324 (866762-academics-mdiv) 866762 - new, larger images, thanks Karen Crane.
+1f69305a de2283ad 8048c948 tweaks [merged from Service-Ticket-866465--Alumns]
+
+# ●  |  |
+# |\_|__|_
+# |  |  | \
+# |  |  ●  |
+# |  |  |\ |
+# |  |  | \|
+#  \_|_ |  |
+#    | \|  |
+#    |  |  ●
+#    |  ●  |

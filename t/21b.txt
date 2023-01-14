@@ -1,0 +1,9 @@
+(?^x:[[:xdigit:]]{8,})
+(?^x:[[:xdigit:]]{8,})
+(?^x:[[:xdigit:]]{8,})
+(?^x:[[:xdigit:]]{8,})
+                        A B
+                        C D B
+                        B E
+                        E
+# chains of reasoning for 0 commits consumed about 2 bytes if JSON is what you go by
