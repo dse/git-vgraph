@@ -19,6 +19,7 @@ use Getopt::Long;
 Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case');
 Getopt::Long::GetOptions(
     'all'               => sub { push(@gitCmd, '--all');                                              },
+    'no-all'            => sub { @gitCmd = grep { $_ ne '--all' } @gitCmd; },
     'decorate:s'        => sub { push(@gitCmd, '--decorate'); $gitCmd[-1] .= "=$_[1]" if $_[1] ne ''; },
     'no-decorate'       => sub { push(@gitCmd, '--no-decorate');                                      },
     'date-order'        => sub { push(@gitCmd, '--date-order');                                       },
