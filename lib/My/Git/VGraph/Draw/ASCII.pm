@@ -6,17 +6,18 @@ use List::Util qw(min max);
 sub new {
     my ($class, %args) = @_;
     my $self = bless(\%args, $class);
-    $self->{bullet} //= $self->{options}->{bullet} // "\N{BLACK CIRCLE}";
+    $self->{bullet} //= $self->{options}->{bullet} // "#";
     return $self;
 }
 sub vertical {
-    my ($self, $maxCol, $A, $mark) = @_;
+    my ($self, $maxCol, $A, $mark, @revLists) = @_;
     my @vcol = grep { defined $_ } values(%$A);
     return $self->draw(
         maxCol => $maxCol,
         mode => 'verticals',
         verticalColumns => \@vcol,
         markColumn => $mark,
+        revLists => [@revLists],
     );
 }
 sub draw {
@@ -25,6 +26,9 @@ sub draw {
     # conceptually specifies what kind of drawing you're doing; in
     # reality only determines type of return value.
     my $mode = $args{mode};
+
+    my @revLists = @{$args{revLists} // []};
+    my $code = scalar @revLists ? $revLists[0]{code} : undef;
 
     my $maxCol              = $args{maxCol};
     my @verticalColumns     = eval { @{$args{verticalColumns}} };
@@ -77,24 +81,34 @@ sub draw {
         }
         if (grep { $diagonalsFromColumn == $_ } @diagonalsToColumns) {
             substr($line1, $diagonalsFromColumn * $colSep, 1) = '|';
-            substr($line2, $diagonalsFromColumn * $colSep, 1) = '|';
+            if ($useLine2) {
+                substr($line2, $diagonalsFromColumn * $colSep, 1) = '|';
+            }
         }
     }
     foreach my $column (@verticalColumns) {
         substr($line1, $column * $colSep, 1) = '|';
-        substr($line2, $column * $colSep, 1) = '|';
+        if ($useLine2) {
+            substr($line2, $column * $colSep, 1) = '|';
+        }
     }
     if ($self->{colSep} < 3) {
         foreach my $column (@diagonalsToColumns) {
             if ($column == $diagonalsFromColumn - 1 || $column == $diagonalsFromColumn + 1) {
-                substr($line2, $column * $colSep, 1) = '|';
+                if ($useLine2) {
+                    substr($line2, $column * $colSep, 1) = '!';
+                }
             }
         }
     }
     if (defined $markColumn) {
         my $bullet = $self->{bullet};
         substr($line1, $markColumn * $colSep, 1) = $bullet;
-        $line1 =~ s{\Q$bullet\E}{\e[1;33m$&\e[m}g;
+        if (defined $code) {
+            $line1 =~ s{\Q$bullet\E}{\e[103;30;1m$code\e[m}g;
+        } else {
+            $line1 =~ s{\Q$bullet\E}{\e[1;33m$&\e[m}g;
+        }
     }
     if ($mode eq 'diagonals') {
         return ($line1, $line2) if $useLine2;

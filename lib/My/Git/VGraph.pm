@@ -53,7 +53,8 @@ sub commit {
         $self->{orphaned} = $state1->{$commit};
         delete $state1->{$commit};
         my $maxCol = max grep { defined $_ } values %$columns;
-        my $line1 = $self->{draw}->vertical($maxCol, $columns, $columns->{$commit});
+        my @revLists = $self->getRevListsContaining($commit);
+        my $line1 = $self->{draw}->vertical($maxCol, $columns, $columns->{$commit}, @revLists);
         my $line2 = $self->{draw}->vertical($maxCol, $state1);
         $self->{orphanLine} = $line2; # may need later
         $leftFill = $line2;
@@ -143,7 +144,8 @@ sub commit {
         );
     }
     $leftFill = $self->{draw}->vertical($maxCol, $state2 // $state1);
-    my $line0 = $self->{draw}->vertical($maxCol, $columns, $columns->{$commit});
+    my @revLists = $self->getRevListsContaining($commit);
+    my $line0 = $self->{draw}->vertical($maxCol, $columns, $columns->{$commit}, @revLists);
     push(@left, $line0);
     foreach my $diagLine (@diagLines1, @diagLines2) {
         push(@left, $diagLine);
@@ -181,6 +183,16 @@ sub usingPriorityFight {
 sub usingLeftmostColumn {
     my ($self) = @_;
     return defined $self->{strategy} && $self->{strategy} eq 'leftmost-column';
+}
+sub getRevListsContaining {
+    my ($self, $commit) = @_;
+    my @revLists;
+    foreach my $revList (@{$self->{revLists}}) {
+        if (grep { $_ eq $commit } @{$revList->{revList}}) {
+            push(@revLists, $revList);
+        }
+    }
+    return @revLists;
 }
 
 1;

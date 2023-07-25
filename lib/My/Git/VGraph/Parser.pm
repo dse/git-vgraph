@@ -20,7 +20,19 @@ sub new {
     $self->{printer} = My::Git::VGraph::Printer->new(%args);
     $self->{printer}->{color} = 0 if !-t 1 && !$self->{options}->{isPaging};
     $self->{abbrev} //= ($self->{options}->{abbrev} // 8);
+    $self->{revLists} = [];
     return $self;
+}
+sub revList {
+    my ($self, $revList, @revList) = @_;
+    my $code = excelColumnCode(scalar(@{$self->{revLists}}));
+    push(@{$self->{revLists}}, {
+        specified => $revList,
+        revList => [@revList],
+        code => $code,
+    });
+    $self->{vgraph}->{revLists} = [ @{$self->{revLists}} ];
+    $self->{printer}->{revLists} = [ @{$self->{revLists}} ];
 }
 sub parseLine {
     my ($self, $line) = @_;
@@ -69,6 +81,14 @@ sub commitLogLine {
 sub eof {
     my ($self) = @_;
     $self->{printer}->flush();
+}
+
+sub excelColumnCode {
+    my ($num) = @_;
+    if ($num < 26) {
+        return chr(65 + $num);  # A..Z
+    }
+    return excelColumnCode(floor(($num - 26)/26)) . excelColumnCode($num % 26);
 }
 
 1;

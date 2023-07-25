@@ -9,11 +9,13 @@ use lib "${FindBin::Bin}/../lib";
 
 use My::Git::VGraph::Parser;
 use File::Basename qw(basename);
-use POSIX qw(dup2);
+use POSIX qw(dup2 floor);
 use charnames ();
 
 our %options;
 our @gitCmd = ('git', 'log', '--parents', '--color=always');
+our @revLists;
+our $abbrevCommit = 1;
 
 use Getopt::Long;
 Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case');
@@ -27,8 +29,10 @@ Getopt::Long::GetOptions(
     'topo-order'        => sub { push(@gitCmd, '--topo-order');                                       },
     'pretty:s'          => sub { push(@gitCmd, '--pretty');   $gitCmd[-1] .= "=$_[1]" if $_[1] ne ''; },
     'format=s'          => sub { push(@gitCmd, '--format');   $gitCmd[-1] .= "=$_[1]";                },
-    'abbrev-commit'     => sub { push(@gitCmd, '--abbrev-commit');                                    },
-    'no-abbrev-commit'  => sub { push(@gitCmd, '--no-abbrev-commit');                                 },
+    'abbrev-commit'     => sub { push(@gitCmd, '--abbrev-commit');
+                                 $abbrevCommit = 1; },
+    'no-abbrev-commit'  => sub { push(@gitCmd, '--no-abbrev-commit');
+                                 $abbrevCommit = 0; },
     'oneline'           => sub { push(@gitCmd, '--oneline');                                          },
     'date=s'            => sub { push(@gitCmd, '--date');     $gitCmd[-1] .= "=$_[1]";                },
     'name-status'       => sub { push(@gitCmd, '--name-status');                                      },
@@ -43,9 +47,12 @@ Getopt::Long::GetOptions(
     'adog|goad'         => sub { push(@gitCmd, '--oneline', '--all', '--decorate'); },
     'priority-fight'    => sub { $options{strategy} = 'priority-fight'; },
     'leftmost-column'   => sub { $options{strategy} = 'leftmost-column'; },
-    'narrow'            => sub { $options{colSep} = 2; },
+    '2|narrow'          => sub { $options{colSep} = 2; },
+    '3|wide'            => sub { $options{colSep} = 3; },
     'stdin'             => sub { $options{stdin} = 1; },
     'help'              => sub { usage(); exit(0); },
+
+    'rev-list=s'        => \@revLists,
 ) or die("Type '$PROGNAME --help' for help.\n");
 
 sub interpretChar {
@@ -105,6 +112,11 @@ if (-t fileno(\*STDOUT)) {
     $g->{options}->{isPaging} = 1;
 }
 
+foreach my $revList (@revLists) {
+    my @revList = getGitRevListList($revList);
+    $g->revList($revList, @revList);
+}
+
 if ($options{stdin}) {
     while (<>) {
         $g->parseLine($_);
@@ -118,6 +130,19 @@ if ($options{stdin}) {
         $g->parseLine($_);
     }
     $g->eof();
+}
+
+sub getGitRevListList {
+    my ($revList) = @_;
+    my $ph;
+    my $abbrev = $abbrevCommit ? "--abbrev-commit" : "--no-abbrev-commit";
+    open($ph, '-|', 'git', 'rev-list', $abbrev, $revList) or die("unable to execute git revlist: $!\n");
+    my @revList;
+    while (<$ph>) {
+        my @rev = split(' ', $_);
+        push(@revList, @rev);
+    }
+    return @revList;
 }
 
 =head1 NAME
