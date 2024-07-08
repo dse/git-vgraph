@@ -47,7 +47,7 @@ Getopt::Long::GetOptions(
     'bullet=s'          => sub { $options{bullet} = interpretChar($_[1]); },
     'graph'             => sub { }, # no effect
 
-    # special handling
+    # special handling of git-log options
     'parents'           => sub { $options{parents} = 1; },
     'abbrev:s'          => sub { push(@gitCmd, '--abbrev'); $gitCmd[-1] .= "=$_[1]" if $_[1] ne ''; },
 
