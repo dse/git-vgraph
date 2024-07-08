@@ -24,33 +24,31 @@ Getopt::Long::GetOptions(
     # git log --branches --remotes --tags --graph --oneline --decorate
 
     # git options we simply pass to git
-    'branches'          => sub { push(@gitCmd, '--branches') },
-    'remotes'           => sub { push(@gitCmd, '--remotes') },
-    'tags'              => sub { push(@gitCmd, '--tags') },
-    'all'               => sub { push(@gitCmd, '--all');                                              },
-    'decorate:s'        => sub { push(@gitCmd, '--decorate'); $gitCmd[-1] .= "=$_[1]" if $_[1] ne ''; },
-    'no-decorate'       => sub { push(@gitCmd, '--no-decorate');                                      },
-    'date-order'        => sub { push(@gitCmd, '--date-order');                                       },
-    'author-date-order' => sub { push(@gitCmd, '--author-date-order');                                },
-    'topo-order'        => sub { push(@gitCmd, '--topo-order');                                       },
-    'pretty:s'          => sub { push(@gitCmd, '--pretty');   $gitCmd[-1] .= "=$_[1]" if $_[1] ne ''; },
-    'format=s'          => sub { push(@gitCmd, '--format');   $gitCmd[-1] .= "=$_[1]";                },
-    'abbrev-commit'     => sub { push(@gitCmd, '--abbrev-commit');
-                                 $abbrevCommit = 1; },
-    'no-abbrev-commit'  => sub { push(@gitCmd, '--no-abbrev-commit');
-                                 $abbrevCommit = 0; },
-    'oneline'           => sub { push(@gitCmd, '--oneline');                                          },
-    'date=s'            => sub { push(@gitCmd, '--date');     $gitCmd[-1] .= "=$_[1]";                },
-    'name-status'       => sub { push(@gitCmd, '--name-status');                                      },
-    'stat:s'            => sub { push(@gitCmd, '--stat'); $gitCmd[-1] .= "=$_[1]" if $_[1] ne ''; },
+    'branches'          => sub { push(@gitCmd, '--branches')           },
+    'remotes'           => sub { push(@gitCmd, '--remotes')            },
+    'tags'              => sub { push(@gitCmd, '--tags')               },
+    'all'               => sub { push(@gitCmd, '--all');               },
+    'decorate:s'        => sub { push(@gitCmd, '--decorate');          $gitCmd[-1] .= "=$_[1]" if $_[1] ne ''; },
+    'no-decorate'       => sub { push(@gitCmd, '--no-decorate');       },
+    'date-order'        => sub { push(@gitCmd, '--date-order');        },
+    'author-date-order' => sub { push(@gitCmd, '--author-date-order'); },
+    'topo-order'        => sub { push(@gitCmd, '--topo-order');        },
+    'pretty:s'          => sub { push(@gitCmd, '--pretty');            $gitCmd[-1] .= "=$_[1]" if $_[1] ne ''; },
+    'format=s'          => sub { push(@gitCmd, '--format');            $gitCmd[-1] .= "=$_[1]"; },
+    'abbrev-commit'     => sub { push(@gitCmd, '--abbrev-commit');     $abbrevCommit = 1; },
+    'no-abbrev-commit'  => sub { push(@gitCmd, '--no-abbrev-commit');  $abbrevCommit = 0; },
+    'oneline'           => sub { push(@gitCmd, '--oneline');           },
+    'date=s'            => sub { push(@gitCmd, '--date');              $gitCmd[-1] .= "=$_[1]"; },
+    'name-status'       => sub { push(@gitCmd, '--name-status');       },
+    'stat:s'            => sub { push(@gitCmd, '--stat');              $gitCmd[-1] .= "=$_[1]" if $_[1] ne ''; },
 
     # undo
     'no-all'            => sub { @gitCmd = grep { $_ ne '--all' } @gitCmd; },
 
     # special handling of git-log options
     'graph'             => sub { }, # no effect
-    'parents'           => sub { $options{parents} = 1; },
-    'abbrev:s'          => sub { push(@gitCmd, '--abbrev'); $gitCmd[-1] .= "=$_[1]" if $_[1] ne ''; },
+    'parents'           => sub { $options{parents} = 1;                },
+    'abbrev:s'          => sub { push(@gitCmd, '--abbrev');            $gitCmd[-1] .= "=$_[1]" if $_[1] ne ''; },
 
     # our options
     'bullet=s'          => sub { $options{bullet} = interpretChar($_[1]); },
