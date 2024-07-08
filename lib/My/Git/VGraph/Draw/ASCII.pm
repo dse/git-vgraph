@@ -8,7 +8,6 @@ sub new {
     my $self = bless(\%args, $class);
     $self->{bullet} //= $self->{options}->{bullet} // "#";
     $self->{stubby} //= $self->{options}->{stubby} // 0;
-    $self->{unicode} //= $self->{options}->{unicode} // 0;
     return $self;
 }
 sub vertical {
@@ -52,10 +51,10 @@ sub draw {
     my @leftColumns  = grep { $_ < $diagonalsFromColumn } @diagonalsToColumns;
     my @rightColumns = grep { $_ > $diagonalsFromColumn } @diagonalsToColumns;
 
-    my $leftLow = $self->{unicode} ? "\N{LEFT LOW PARAPHRASE BRACKET}" : ".";
-    my $rightLow = $self->{unicode} ? "\N{RIGHT LOW PARAPHRASE BRACKET}" : ".";
-    my $leftRaised = $self->{unicode} ? "\N{LEFT RAISED OMISSION BRACKET}" : "'";
-    my $rightRaised = $self->{unicode} ? "\N{RIGHT RAISED OMISSION BRACKET}" : "'";
+    my $leftLow     = ".";
+    my $rightLow    = ".";
+    my $leftRaised  = "'";
+    my $rightRaised = "'";
 
     if (defined $diagonalsFromColumn) {
         if (scalar @leftColumns) {
