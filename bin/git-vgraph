@@ -16,6 +16,7 @@ our %options;
 our @gitCmd = ('git', 'log', '--parents', '--color=always');
 our @revLists;
 our $abbrevCommit = 1;
+our $dryRun;
 
 use Getopt::Long;
 Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case');
@@ -42,6 +43,7 @@ Getopt::Long::GetOptions(
     'oneline'           => sub { push(@gitCmd, '--oneline');                                          },
     'date=s'            => sub { push(@gitCmd, '--date');     $gitCmd[-1] .= "=$_[1]";                },
     'name-status'       => sub { push(@gitCmd, '--name-status');                                      },
+    'stat:s'            => sub { push(@gitCmd, '--stat'); $gitCmd[-1] .= "=$_[1]" if $_[1] ne ''; },
     'bullet=s'          => sub { $options{bullet} = interpretChar($_[1]); },
     'graph'             => sub { }, # no effect
 
@@ -59,6 +61,8 @@ Getopt::Long::GetOptions(
     'help'              => sub { usage(); exit(0); },
 
     'rev-list=s'        => \@revLists,
+
+    'n|dry-run'         => \$dryRun,
 ) or die("Type '$PROGNAME --help' for help.\n");
 
 sub interpretChar {
@@ -130,6 +134,10 @@ if ($options{stdin}) {
     $g->eof();
 } else {
     push(@gitCmd, @ARGV);
+    if ($dryRun) {
+        print("@gitCmd\n");
+        exit(0);
+    }
     my $ph;
     open($ph, '-|', @gitCmd) or die("unable to execute git log: $!\n");
     while (<$ph>) {
