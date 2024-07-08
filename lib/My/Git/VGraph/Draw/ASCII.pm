@@ -147,6 +147,7 @@ sub draw {
     if (defined $markColumn) {
         my $bullet = $self->{bullet};
         substr($line1, $markColumn * $colSep, 1) = $bullet;
+        my $is_vt = $ENV{TERM} =~ /^(screen|xterm|uxterm|vt[12345][0-9][0-9]|linux|putty|mintty|tmux)/;
         if (defined $code) {
             $line1 =~ s{\Q$bullet\E}{\e[103;30;1m$code\e[m};
         } else {
