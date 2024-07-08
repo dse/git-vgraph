@@ -148,9 +148,9 @@ sub draw {
         my $bullet = $self->{bullet};
         substr($line1, $markColumn * $colSep, 1) = $bullet;
         if (defined $code) {
-            $line1 =~ s{\Q$bullet\E}{\e[103;30;1m$code\e[m}g;
+            $line1 =~ s{\Q$bullet\E}{\e[103;30;1m$code\e[m};
         } else {
-            $line1 =~ s{\Q$bullet\E}{\e[1;33m$&\e[m}g;
+            $line1 =~ s{\Q$bullet\E}{\e[1;33m$&\e[m};
         }
     }
     if ($mode eq 'diagonals') {
