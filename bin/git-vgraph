@@ -28,7 +28,6 @@ Getopt::Long::GetOptions(
     'tags' => sub { push(@gitCmd, '--tags') },
 
     'all'               => sub { push(@gitCmd, '--all');                                              },
-    'no-all'            => sub { @gitCmd = grep { $_ ne '--all' } @gitCmd; },
     'decorate:s'        => sub { push(@gitCmd, '--decorate'); $gitCmd[-1] .= "=$_[1]" if $_[1] ne ''; },
     'no-decorate'       => sub { push(@gitCmd, '--no-decorate');                                      },
     'date-order'        => sub { push(@gitCmd, '--date-order');                                       },
@@ -44,7 +43,9 @@ Getopt::Long::GetOptions(
     'date=s'            => sub { push(@gitCmd, '--date');     $gitCmd[-1] .= "=$_[1]";                },
     'name-status'       => sub { push(@gitCmd, '--name-status');                                      },
     'stat:s'            => sub { push(@gitCmd, '--stat'); $gitCmd[-1] .= "=$_[1]" if $_[1] ne ''; },
-    'bullet=s'          => sub { $options{bullet} = interpretChar($_[1]); },
+
+    # undo
+    'no-all'            => sub { @gitCmd = grep { $_ ne '--all' } @gitCmd; },
 
     # special handling of git-log options
     'graph'             => sub { }, # no effect
@@ -52,6 +53,7 @@ Getopt::Long::GetOptions(
     'abbrev:s'          => sub { push(@gitCmd, '--abbrev'); $gitCmd[-1] .= "=$_[1]" if $_[1] ne ''; },
 
     # our options
+    'bullet=s'          => sub { $options{bullet} = interpretChar($_[1]); },
     'adog|goad'         => sub { push(@gitCmd, '--oneline', '--all', '--decorate'); },
     'priority-fight'    => sub { $options{strategy} = 'priority-fight'; },
     'leftmost-column'   => sub { $options{strategy} = 'leftmost-column'; },
