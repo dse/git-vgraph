@@ -147,11 +147,13 @@ sub draw {
     if (defined $markColumn) {
         my $bullet = $self->{bullet};
         substr($line1, $markColumn * $colSep, 1) = $bullet;
-        my $is_vt = $ENV{TERM} =~ /^(screen|xterm|uxterm|vt[12345][0-9][0-9]|linux|putty|mintty|tmux)/;
+        my $_sgr0 = $self->{_sgr0} //= `tput sgr0 2>/dev/null`;
         if (defined $code) {
-            $line1 =~ s{\Q$bullet\E}{\e[103;30;1m$code\e[m};
+            my $_code = $self->{_code} //= `{ echo setaf 3; echo setab 1; echo bold; } | tput -S`;
+            $line1 =~ s{\Q$bullet\E}{${_code}${code}${_sgr0}};
         } else {
-            $line1 =~ s{\Q$bullet\E}{\e[1;33m$&\e[m};
+            my $_bull = $self->{_bull} //= `{ echo setaf 3; echo bold; } | tput -S`;
+            $line1 =~ s{\Q$bullet\E}{${_bull}$&${_sgr0}};
         }
     }
     if ($mode eq 'diagonals') {
