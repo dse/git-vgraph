@@ -17,6 +17,7 @@ our @gitCmd = ('git', 'log', '--parents', '--color=always');
 our @revLists;
 our $abbrevCommit = 1;
 our $dryRun;
+our $verbose = 0;
 
 use Getopt::Long;
 Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case');
@@ -24,6 +25,7 @@ Getopt::Long::GetOptions(
     # git log --branches --remotes --tags --graph --oneline --decorate
 
     # git options we simply pass to git
+    "verbose+"          => \$verbose,
     "branches"          => sub { push(@gitCmd, "--branches")           },
     "remotes"           => sub { push(@gitCmd, "--remotes")            },
     "tags"              => sub { push(@gitCmd, "--tags")               },
@@ -135,8 +137,11 @@ if ($options{stdin}) {
 } else {
     push(@gitCmd, @ARGV);
     if ($dryRun) {
-        print("@gitCmd\n");
+        print(shell_quote(@gitCmd) . "\n");
         exit(0);
+    }
+    if ($verbose) {
+        print(shell_quote(@gitCmd) . "\n");
     }
     my $ph;
     open($ph, '-|', @gitCmd) or die("unable to execute git log: $!\n");
@@ -150,13 +155,52 @@ sub getGitRevListList {
     my ($revList) = @_;
     my $ph;
     my $abbrev = $abbrevCommit ? "--abbrev-commit" : "--no-abbrev-commit";
-    open($ph, '-|', 'git', 'rev-list', $abbrev, $revList) or die("unable to execute git revlist: $!\n");
+    my @gitRevListCmd = ('git', 'rev-list', $abbrev, $revList);
+    if ($verbose) {
+        print(shell_quote(@gitRevListCmd) . "\n");
+    }
+    open($ph, '-|', @gitRevListCmd) or die("unable to execute git revlist: $!\n");
     my @revList;
     while (<$ph>) {
         my @rev = split(' ', $_);
         push(@revList, @rev);
     }
     return @revList;
+}
+
+sub shell_quote {
+    my (@cmd) = map { shell_quote_word($_) } @_;
+    return join(" ", @cmd);
+}
+
+sub shell_quote_word {
+    my ($word) = @_;
+    return "''" if $word eq '';
+    return $word if $word =~ m{^[-+,./0-9A-Za-z:=@]+$};
+    $word =~ s{'}{'\\''}g;
+    $word = "'$word'";
+    $word =~ s{[\x00-\x1f\x7f-\x9f]+}{"'\$'" . shell_quote_char($&) . "''"}ge;
+    $word =~ s{^('')+}{};
+    $word =~ s{('')+$}{};
+    $word =~ s{^'(--[-0-9A-Za-z]+=)}{$1'};
+    return $word;
+}
+
+sub shell_quote_char {
+    my ($str) = @_;
+    if (length($str) > 1) {
+        return join('', map { shell_quote_char($_) } split('', $str));
+    }
+    return "\\b" if $str eq "\b";
+    return "\\e" if $str eq "\e";
+    return "\\f" if $str eq "\f";
+    return "\\n" if $str eq "\n";
+    return "\\r" if $str eq "\r";
+    return "\\t" if $str eq "\t";
+    return "\\v" if $str eq "\x0b";
+    my $ord = ord($str);
+    return sprintf('\\x%02x', $ord) if ($ord >= 0 && $ord <= 31) || ($ord >= 0x7f && $ord <= 0x9f);
+    return $str;
 }
 
 =head1 NAME
